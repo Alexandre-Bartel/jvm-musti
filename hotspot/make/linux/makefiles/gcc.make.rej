@@ -1,0 +1,11 @@
+--- hotspot/make/linux/makefiles/gcc.make
++++ hotspot/make/linux/makefiles/gcc.make
+@@ -198,7 +198,7 @@ else
+ endif
+ 
+ # Compiler warnings are treated as errors
+-WARNINGS_ARE_ERRORS = -Werror -Wno-error=format -Wno-error=deprecated
++WARNINGS_ARE_ERRORS = 
+ 
+ ifeq ($(USE_CLANG), true)
+   # However we need to clean the code up before we can unrestrictedly enable this option with Clang

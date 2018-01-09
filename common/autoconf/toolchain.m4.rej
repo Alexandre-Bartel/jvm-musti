@@ -1,0 +1,43 @@
+--- common/autoconf/toolchain.m4	Mon Feb 29 06:45:20 2016 +0000
++++ common/autoconf/toolchain.m4	Fri Mar 11 18:01:42 2016 +0000
+@@ -1214,9 +1228,9 @@
+ #                                   [RUN-IF-FALSE])
+ # ------------------------------------------------------------
+ # Check that the c and c++ compilers support an argument
+-AC_DEFUN([TOOLCHAIN_COMPILER_CHECK_ARGUMENTS],
++AC_DEFUN([TOOLCHAIN_C_COMPILER_CHECK_ARGUMENTS],
+ [
+-  AC_MSG_CHECKING([if compiler supports "$1"])
++  AC_MSG_CHECKING([if the C compiler supports "$1"])
+   supports=yes
+ 
+   saved_cflags="$CFLAGS"
+@@ -1247,7 +1274,28 @@
+       [supports=no])
+   AC_LANG_POP([C++])
+   CXXFLAGS="$saved_cxxflags"
++  
++  AC_MSG_RESULT([$supports])
++  if test "x$supports" = "xyes" ; then
++    m4_ifval([$2], [$2], [:])
++  else
++    m4_ifval([$3], [$3], [:])
++  fi
++])
+ 
++# TOOLCHAIN_COMPILER_CHECK_ARGUMENTS(ARGUMENT: [ARGUMENT], IF_TRUE: [RUN-IF-TRUE],
++#                                   IF_FALSE: [RUN-IF-FALSE])
++# ------------------------------------------------------------
++# Check that the c and c++ compilers support an argument
++AC_DEFUN([TOOLCHAIN_COMPILER_CHECK_ARGUMENTS],
++[
++  TOOLCHAIN_C_COMPILER_CHECK_ARGUMENTS([$1], [C_COMP_SUPPORTS="yes"], [C_COMP_SUPPORTS="no"])
++  TOOLCHAIN_CXX_COMPILER_CHECK_ARGUMENTS([$1], [CXX_COMP_SUPPORTS="yes"], [CXX_COMP_SUPPORTS="no"])
++
++  AC_MSG_CHECKING([if both compilers support "$1"])
++  supports=no
++  if test "x$C_COMP_SUPPORTS" = "xyes" -a "x$CXX_COMP_SUPPORTS" = "xyes"; then supports=yes; fi
++  
+   AC_MSG_RESULT([$supports])
+   if test "x$supports" = "xyes" ; then
+     m4_ifval([$2], [$2], [:])
