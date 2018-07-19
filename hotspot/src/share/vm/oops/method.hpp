@@ -37,6 +37,8 @@
 #include "oops/typeArrayOop.hpp"
 #include "utilities/accessFlags.hpp"
 #include "utilities/growableArray.hpp"
+#include "stdio.h"
+#include "wchar.h"
 
 // A Method* represents a Java method.
 //
@@ -114,6 +116,7 @@ class Method : public Metadata {
                     _dont_inline          : 1,
                     _has_injected_profile : 1,
                                           : 2;
+ bool already_transformed = false;
 
 #ifndef PRODUCT
   int               _compiled_invocation_count;  // Number of nmethod invocations so far (for perf. debugging)
@@ -209,6 +212,24 @@ class Method : public Metadata {
   // Static routine in the situations we don't have a Method*
   static char* name_and_sig_as_C_string(Klass* klass, Symbol* method_name, Symbol* signature);
   static char* name_and_sig_as_C_string(Klass* klass, Symbol* method_name, Symbol* signature, char* buf, int size);
+
+
+  Method* transform_bytecode_for_constructor_method(TRAPS);
+  Method* transform_bytecode_for_normal_method(TRAPS);
+  void updateStackMapFrames(int new_instructions_size, TRAPS);
+  void updateStackMapFrames2(int new_instructions_size, TRAPS);
+  void updateStackMapFrames(int* modified_offsets, 
+                            int modified_offsets_len, 
+                            int* len_diff, 
+                            int len_diff_len, TRAPS);
+  void ajust_stack_map_table(int bci, int delta);
+  bool ajust_stack_map_table2(int bci, int delta, int already_updated);
+  void add_goto_stackmap_frame(int goto_offset, TRAPS);
+  void updateExceptionOffsets(int new_instructions_size, TRAPS);
+  void updateExceptionOffsets(int* modified_offsets, 
+                              int modified_offsets_len, 
+                              int* len_diff, 
+                              int len_diff_len, TRAPS);
 
   Bytecodes::Code java_code_at(int bci) const {
     return Bytecodes::java_code_at(this, bcp_from(bci));
@@ -722,6 +743,8 @@ class Method : public Metadata {
   void set_is_prefixed_native()                     { _access_flags.set_is_prefixed_native(); }
 
   // Rewriting support
+  Method* clone_with_new_code_stackmap_exception(
+    u_char* new_code, int new_code_length, TRAPS);
   static methodHandle clone_with_new_data(methodHandle m, u_char* new_code, int new_code_length,
                                           u_char* new_compressed_linenumber_table, int new_compressed_linenumber_size, TRAPS);
 

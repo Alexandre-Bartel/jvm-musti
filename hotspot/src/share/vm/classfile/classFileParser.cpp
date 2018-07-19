@@ -64,6 +64,9 @@
 #include "utilities/array.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/ostream.hpp"
+//
+#include "stdio.h"
+#include "wchar.h"
 
 // We generally try to create the oops directly when parsing, rather than
 // allocating temporary data structures and copying the bytes twice. A
@@ -326,18 +329,346 @@ constantPoolHandle ClassFileParser::parse_constant_pool(TRAPS) {
   ClassFileStream* cfs = stream();
   constantPoolHandle nullHandle;
 
+  bool update_constant_pool = true;
+  bool add_methods = true;
+
+  int NBR_NEW_CONSTANTS = 0;
+  if (update_constant_pool) {
+    NBR_NEW_CONSTANTS = 30;
+  }
+
   cfs->guarantee_more(3, CHECK_(nullHandle)); // length, first cp tag
   u2 length = cfs->get_u2_fast();
   guarantee_property(
-    length >= 1, "Illegal constant pool size %u in class file %s",
-    length, CHECK_(nullHandle));
+      length >= 1, "Illegal constant pool size %u in class file %s",
+      length, CHECK_(nullHandle));
+  length = length + NBR_NEW_CONSTANTS;
   ConstantPool* constant_pool = ConstantPool::allocate(_loader_data, length,
-                                                        CHECK_(nullHandle));
+      CHECK_(nullHandle));
   _cp = constant_pool; // save in case of errors
   constantPoolHandle cp (THREAD, constant_pool);
 
   // parsing constant pool entries
-  parse_constant_pool_entries(length, CHECK_(nullHandle));
+  parse_constant_pool_entries(length - NBR_NEW_CONSTANTS, CHECK_(nullHandle));
+  //length = length + 6; // only add 6 after call to parse_constant_pool because of the loop in this method which relies on length
+
+  if (update_constant_pool) {
+    // add our new entries for field...
+
+    // Used for batching symbol allocations.
+    const char* names[SymbolTable::symbol_alloc_batch_size];
+    int lengths[SymbolTable::symbol_alloc_batch_size];
+    int indices[SymbolTable::symbol_alloc_batch_size];
+    unsigned int hashValues[SymbolTable::symbol_alloc_batch_size];
+    int names_count = 0;
+
+    int new_index = length - NBR_NEW_CONSTANTS;
+    u2 field_name_and_type_index = new_index + 0; // needs (name_index, type_index)
+    u2 field_name_utf8_index = new_index + 1;
+    u2 field_type_utf8_index = new_index + 2;
+    u2 field_ref_index = new_index + 3; // needs (class_index, name_and_type_index)
+    u2 field_class_index = new_index + 4; // needs (class_name_index)
+    u2 field_class_name_utf8_index = new_index + 5;
+    u2 method_object_name_and_type_index = new_index + 6;
+    u2 method_object_name_utf8_index = new_index + 7;
+    u2 method_object_type_utf8_index = new_index + 8;
+    u2 method_object_class_index = new_index + 9;
+    u2 method_object_class_name_utf8_index = new_index + 10;
+    u2 method_object_ref_index = new_index + 11;
+    u2 method_exception_name_and_type_index = new_index + 12;
+    u2 method_exception_name_utf8_index = new_index + 13;
+    u2 method_exception_type_utf8_index = new_index + 14;
+    u2 method_exception_class_index = new_index + 15;
+    u2 method_exception_class_name_utf8_index = new_index + 16;
+    u2 method_exception_ref_index = new_index + 17;
+
+    u2 field2_name_and_type_index = new_index + 18;
+    u2 field2_name_utf8_index = new_index + 19;
+    u2 field2_type_utf8_index = new_index + 20;
+    u2 field2_ref_index = new_index + 21;
+    u2 field2_class_index = new_index + 22;
+    u2 field2_class_name_utf8_index = new_index + 23;
+
+    u2 method2_exception_name_and_type_index = new_index + 24;
+    u2 method2_exception_name_utf8_index = new_index + 25;
+    u2 method2_exception_type_utf8_index = new_index + 26;
+    u2 method2_exception_class_index = new_index + 27;
+    u2 method2_exception_class_name_utf8_index = new_index + 28;
+    u2 method2_exception_ref_index = new_index + 29;
+
+
+    ///
+    /// add field bypass_check
+    ///
+    _cp->name_and_type_at_put(field_name_and_type_index, field_name_utf8_index, field_type_utf8_index);
+    // field name:
+    u1* utf8_buffer_0 = (u1*) "bypass_check";
+    int utf8_length_0 = 12;
+    unsigned int hash_0;
+    Symbol* result0 = SymbolTable::lookup_only((char*)utf8_buffer_0, utf8_length_0, hash_0);
+    if (result0 == NULL) {
+      names[names_count] = (char*)utf8_buffer_0;
+      lengths[names_count] = utf8_length_0;
+      indices[names_count] = field_name_utf8_index;
+      hashValues[names_count++] = hash_0;
+      SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+      names_count = 0;
+    } 
+    result0 = SymbolTable::lookup_only((char*)utf8_buffer_0, utf8_length_0, hash_0);
+    _cp->symbol_at_put(field_name_utf8_index, result0);
+    // field type
+    u1* utf8_buffer_1 = (u1*) "Z";
+    int utf8_length_1 = 1;
+    unsigned int hash_1;
+    Symbol* result1 = SymbolTable::lookup_only((char*)utf8_buffer_1, utf8_length_1, hash_1);
+    if (result1 == NULL) {
+      names[names_count] = (char*)utf8_buffer_1;
+      lengths[names_count] = utf8_length_1;
+      indices[names_count] = field_type_utf8_index;
+      hashValues[names_count++] = hash_1;
+      SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+      names_count = 0;
+
+    } 
+    result1 = SymbolTable::lookup_only((char*)utf8_buffer_1, utf8_length_1, hash_1);
+    _cp->symbol_at_put(field_type_utf8_index, result1);
+    //
+    _cp->field_at_put(field_ref_index, field_class_index, field_name_and_type_index);
+    _cp->klass_index_at_put(field_class_index, field_class_name_utf8_index);
+    _cp->symbol_at_put(field_class_name_utf8_index, _class_name);
+    custom_field_ref_index = field_ref_index;
+    custom_field_name_index = field_name_utf8_index;
+    custom_field_type_index = field_type_utf8_index;
+    //
+
+    ////
+    ///
+    /// add field allow_in_constructor 
+    ///
+    _cp->name_and_type_at_put(field2_name_and_type_index, field2_name_utf8_index, field2_type_utf8_index);
+    // field name:
+    u1* utf8_buffer_f2_0 = (u1*) "allow_in_constructor";
+    int utf8_length_f2_0 = 20;
+    unsigned int hash_f2_0;
+    Symbol* result_f2_0 = SymbolTable::lookup_only((char*)utf8_buffer_f2_0, utf8_length_f2_0, hash_f2_0);
+    if (result_f2_0 == NULL) {
+      names[names_count] = (char*)utf8_buffer_f2_0;
+      lengths[names_count] = utf8_length_f2_0;
+      indices[names_count] = field2_name_utf8_index;
+      hashValues[names_count++] = hash_f2_0;
+      SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+      names_count = 0;
+    } 
+    result_f2_0 = SymbolTable::lookup_only((char*)utf8_buffer_f2_0, utf8_length_f2_0, hash_f2_0);
+    _cp->symbol_at_put(field2_name_utf8_index, result_f2_0);
+    // field type
+    u1* utf8_buffer_f2_1 = (u1*) "Z";
+    int utf8_length_f2_1 = 1;
+    unsigned int hash_f2_1;
+    Symbol* result_f2_1 = SymbolTable::lookup_only((char*)utf8_buffer_f2_1, utf8_length_f2_1, hash_f2_1);
+    if (result_f2_1 == NULL) {
+      names[names_count] = (char*)utf8_buffer_f2_1;
+      lengths[names_count] = utf8_length_f2_1;
+      indices[names_count] = field2_type_utf8_index;
+      hashValues[names_count++] = hash_f2_1;
+      SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+      names_count = 0;
+
+    } 
+    result_f2_1 = SymbolTable::lookup_only((char*)utf8_buffer_f2_1, utf8_length_f2_1, hash_f2_1);
+    _cp->symbol_at_put(field2_type_utf8_index, result_f2_1);
+    //
+    _cp->field_at_put(field2_ref_index, field2_class_index, field2_name_and_type_index);
+    _cp->klass_index_at_put(field2_class_index, field2_class_name_utf8_index);
+    _cp->symbol_at_put(field2_class_name_utf8_index, _class_name);
+    custom_field2_ref_index = field2_ref_index;
+    custom_field2_name_index = field2_name_utf8_index;
+    custom_field2_type_index = field2_type_utf8_index;
+    //
+    ////
+
+    if (add_methods) {
+      ///
+      /// add method object
+      ///
+      _cp->name_and_type_at_put(method_object_name_and_type_index, method_object_name_utf8_index, method_object_type_utf8_index);
+      // method name:
+      u1* utf8_buffer_3a = (u1*) "isObjectInit";
+      int utf8_length_3a = 12;
+      unsigned int hash_3a;
+      Symbol* result_3a = SymbolTable::lookup_only((char*)utf8_buffer_3a, utf8_length_3a, hash_3a);
+      if (result_3a == NULL) {
+        names[names_count] = (char*)utf8_buffer_3a;
+        lengths[names_count] = utf8_length_3a;
+        indices[names_count] = method_object_name_utf8_index;
+        hashValues[names_count++] = hash_3a;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+      }
+      result_3a = SymbolTable::lookup_only((char*)utf8_buffer_3a, utf8_length_3a, hash_3a);
+      // method type
+      u1* utf8_buffer_3b = (u1*) "()Z";
+      int utf8_length_3b = 3;
+      unsigned int hash_3b;
+      Symbol* result_3b = SymbolTable::lookup_only((char*)utf8_buffer_3b, utf8_length_3b, hash_3b);
+      if (result_3b == NULL) {
+        names[names_count] = (char*)utf8_buffer_3b;
+        lengths[names_count] = utf8_length_3b;
+        indices[names_count] = method_object_type_utf8_index;
+        hashValues[names_count++] = hash_3b;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+
+      } 
+      result_3b = SymbolTable::lookup_only((char*)utf8_buffer_3b, utf8_length_3b, hash_3b);
+      // method class
+      u1* utf8_buffer_3c = (u1*) _class_name->as_utf8();//"java/lang/Object";
+      int utf8_length_3c = _class_name->utf8_length();
+      unsigned int hash_3c;
+      Symbol* result_3c = SymbolTable::lookup_only((char*)utf8_buffer_3c, utf8_length_3c, hash_3c);
+      if (result_3c == NULL) {
+        names[names_count] = (char*)utf8_buffer_3c;
+        lengths[names_count] = utf8_length_3c;
+        indices[names_count] = method_object_class_name_utf8_index;
+        hashValues[names_count++] = hash_3c;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+
+      } 
+      result_3c = SymbolTable::lookup_only((char*)utf8_buffer_3c, utf8_length_3c, hash_3c);
+      // 
+      //
+      _cp->method_at_put(method_object_ref_index, method_object_class_index, method_object_name_and_type_index);
+      _cp->klass_index_at_put(method_object_class_index, method_object_class_name_utf8_index);
+      _cp->symbol_at_put(method_object_name_utf8_index, result_3a);
+      _cp->symbol_at_put(method_object_type_utf8_index, result_3b);
+      _cp->symbol_at_put(method_object_class_name_utf8_index, result_3c);
+      custom_method_name_index = method_object_name_utf8_index;
+      custom_method_type_index = method_object_type_utf8_index;
+      custom_method_ref_index = method_object_class_index; 
+      //
+
+      ///
+      /// add method exception 
+      ///
+      _cp->name_and_type_at_put(method_exception_name_and_type_index, method_exception_name_utf8_index, method_exception_type_utf8_index);
+      // method name:
+      u1* utf8_buffer_4a = (u1*) "<init>";
+      int utf8_length_4a = 6;
+      unsigned int hash_4a;
+      Symbol* result_4a = SymbolTable::lookup_only((char*)utf8_buffer_4a, utf8_length_4a, hash_4a);
+      if (result_4a == NULL) {
+        names[names_count] = (char*)utf8_buffer_4a;
+        lengths[names_count] = utf8_length_4a;
+        indices[names_count] = method_exception_name_utf8_index;
+        hashValues[names_count++] = hash_4a;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+      }
+      result_4a = SymbolTable::lookup_only((char*)utf8_buffer_4a, utf8_length_4a, hash_4a);
+      // method type
+      u1* utf8_buffer_4b = (u1*) "()V";
+      int utf8_length_4b = 3;
+      unsigned int hash_4b;
+      Symbol* result_4b = SymbolTable::lookup_only((char*)utf8_buffer_4b, utf8_length_4b, hash_4b);
+      if (result_4b == NULL) {
+        names[names_count] = (char*)utf8_buffer_4b;
+        lengths[names_count] = utf8_length_4b;
+        indices[names_count] = method_exception_type_utf8_index;
+        hashValues[names_count++] = hash_4b;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+
+      } 
+      result_4b = SymbolTable::lookup_only((char*)utf8_buffer_4b, utf8_length_4b, hash_4b);
+      // method class
+      u1* utf8_buffer_4c = (u1*) "java/lang/RuntimeException";
+      int utf8_length_4c = 26;
+      unsigned int hash_4c;
+      Symbol* result_4c = SymbolTable::lookup_only((char*)utf8_buffer_4c, utf8_length_4c, hash_4c);
+      if (result_4c == NULL) {
+        names[names_count] = (char*)utf8_buffer_4c;
+        lengths[names_count] = utf8_length_4c;
+        indices[names_count] = method_exception_class_name_utf8_index;
+        hashValues[names_count++] = hash_4c;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+
+      } 
+      result_4c = SymbolTable::lookup_only((char*)utf8_buffer_4c, utf8_length_4c, hash_4c);
+      //
+      _cp->method_at_put(method_exception_ref_index, method_exception_class_index, method_exception_name_and_type_index);
+      _cp->klass_index_at_put(method_exception_class_index, method_exception_class_name_utf8_index);
+      _cp->symbol_at_put(method_exception_name_utf8_index, result_4a);
+      _cp->symbol_at_put(method_exception_type_utf8_index, result_4b);
+      _cp->symbol_at_put(method_exception_class_name_utf8_index, result_4c);
+      java_lang_runtime_exception_ref_index = method_exception_class_index;
+      exception_init_ref_index = method_exception_ref_index;
+      //
+
+      ///
+      /// add method printstack 
+      ///
+      _cp->name_and_type_at_put(method2_exception_name_and_type_index, method2_exception_name_utf8_index, method2_exception_type_utf8_index);
+      // method name:
+      u1* utf8_buffer_5a = (u1*) "printStackTrace";
+      int utf8_length_5a = 6;
+      unsigned int hash_5a;
+      Symbol* result_5a = SymbolTable::lookup_only((char*)utf8_buffer_5a, utf8_length_5a, hash_5a);
+      if (result_5a == NULL) {
+        names[names_count] = (char*)utf8_buffer_5a;
+        lengths[names_count] = utf8_length_5a;
+        indices[names_count] = method2_exception_name_utf8_index;
+        hashValues[names_count++] = hash_5a;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+      }
+      result_5a = SymbolTable::lookup_only((char*)utf8_buffer_5a, utf8_length_5a, hash_5a);
+      // method type
+      u1* utf8_buffer_5b = (u1*) "()V";
+      int utf8_length_5b = 3;
+      unsigned int hash_5b;
+      Symbol* result_5b = SymbolTable::lookup_only((char*)utf8_buffer_5b, utf8_length_5b, hash_5b);
+      if (result_5b == NULL) {
+        names[names_count] = (char*)utf8_buffer_5b;
+        lengths[names_count] = utf8_length_5b;
+        indices[names_count] = method2_exception_type_utf8_index;
+        hashValues[names_count++] = hash_5b;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+
+      } 
+      result_5b = SymbolTable::lookup_only((char*)utf8_buffer_5b, utf8_length_5b, hash_5b);
+      // method class
+      u1* utf8_buffer_5c = (u1*) "java/lang/Exception";
+      int utf8_length_5c = 26;
+      unsigned int hash_5c;
+      Symbol* result_5c = SymbolTable::lookup_only((char*)utf8_buffer_5c, utf8_length_5c, hash_5c);
+      if (result_5c == NULL) {
+        names[names_count] = (char*)utf8_buffer_5c;
+        lengths[names_count] = utf8_length_5c;
+        indices[names_count] = method2_exception_class_name_utf8_index;
+        hashValues[names_count++] = hash_5c;
+        SymbolTable::new_symbols(_loader_data, _cp, names_count, names, lengths, indices, hashValues, CHECK_(NULL));
+        names_count = 0;
+
+      } 
+      result_5c = SymbolTable::lookup_only((char*)utf8_buffer_5c, utf8_length_5c, hash_5c);
+      //
+      _cp->method_at_put(method2_exception_ref_index, method2_exception_class_index, method2_exception_name_and_type_index);
+      _cp->klass_index_at_put(method2_exception_class_index, method2_exception_class_name_utf8_index);
+      _cp->symbol_at_put(method2_exception_name_utf8_index, result_5a);
+      _cp->symbol_at_put(method2_exception_type_utf8_index, result_5b);
+      _cp->symbol_at_put(method2_exception_class_name_utf8_index, result_5c);
+      print_stack_ref_index = method2_exception_ref_index;
+      java_lang_exception_ref_index = method2_exception_class_index;
+
+
+
+    }
+  } // if update_constant_pool
+
+
 
   int index = 1;  // declared outside of loops for portability
 
@@ -353,144 +684,144 @@ constantPoolHandle ClassFileParser::parse_constant_pool(TRAPS) {
       case JVM_CONSTANT_Methodref :
         // fall through
       case JVM_CONSTANT_InterfaceMethodref : {
-        if (!_need_verify) break;
-        int klass_ref_index = cp->klass_ref_index_at(index);
-        int name_and_type_ref_index = cp->name_and_type_ref_index_at(index);
-        check_property(valid_klass_reference_at(klass_ref_index),
-                       "Invalid constant pool index %u in class file %s",
-                       klass_ref_index,
-                       CHECK_(nullHandle));
-        check_property(valid_cp_range(name_and_type_ref_index, length) &&
-                       cp->tag_at(name_and_type_ref_index).is_name_and_type(),
-                       "Invalid constant pool index %u in class file %s",
-                       name_and_type_ref_index,
-                       CHECK_(nullHandle));
-        break;
-      }
+                                               if (!_need_verify) break;
+                                               int klass_ref_index = cp->klass_ref_index_at(index);
+                                               int name_and_type_ref_index = cp->name_and_type_ref_index_at(index);
+                                               check_property(valid_klass_reference_at(klass_ref_index),
+                                                   "Invalid constant pool index %u in class file %s",
+                                                   klass_ref_index,
+                                                   CHECK_(nullHandle));
+                                               check_property(valid_cp_range(name_and_type_ref_index, length) &&
+                                                   cp->tag_at(name_and_type_ref_index).is_name_and_type(),
+                                                   "Invalid constant pool index %u in class file %s",
+                                                   name_and_type_ref_index,
+                                                   CHECK_(nullHandle));
+                                               break;
+                                             }
       case JVM_CONSTANT_String :
-        ShouldNotReachHere();     // Only JVM_CONSTANT_StringIndex should be present
-        break;
+                                             ShouldNotReachHere();     // Only JVM_CONSTANT_StringIndex should be present
+                                             break;
       case JVM_CONSTANT_Integer :
-        break;
+                                             break;
       case JVM_CONSTANT_Float :
-        break;
+                                             break;
       case JVM_CONSTANT_Long :
       case JVM_CONSTANT_Double :
-        index++;
-        check_property(
-          (index < length && cp->tag_at(index).is_invalid()),
-          "Improper constant pool long/double index %u in class file %s",
-          index, CHECK_(nullHandle));
-        break;
+                                             index++;
+                                             check_property(
+                                                 (index < length && cp->tag_at(index).is_invalid()),
+                                                 "Improper constant pool long/double index %u in class file %s",
+                                                 index, CHECK_(nullHandle));
+                                             break;
       case JVM_CONSTANT_NameAndType : {
-        if (!_need_verify) break;
-        int name_ref_index = cp->name_ref_index_at(index);
-        int signature_ref_index = cp->signature_ref_index_at(index);
-        check_property(valid_symbol_at(name_ref_index),
-                 "Invalid constant pool index %u in class file %s",
-                 name_ref_index, CHECK_(nullHandle));
-        check_property(valid_symbol_at(signature_ref_index),
-                 "Invalid constant pool index %u in class file %s",
-                 signature_ref_index, CHECK_(nullHandle));
-        break;
-      }
+                                        if (!_need_verify) break;
+                                        int name_ref_index = cp->name_ref_index_at(index);
+                                        int signature_ref_index = cp->signature_ref_index_at(index);
+                                        check_property(valid_symbol_at(name_ref_index),
+                                            "Invalid constant pool index %u in class file %s",
+                                            name_ref_index, CHECK_(nullHandle));
+                                        check_property(valid_symbol_at(signature_ref_index),
+                                            "Invalid constant pool index %u in class file %s",
+                                            signature_ref_index, CHECK_(nullHandle));
+                                        break;
+                                      }
       case JVM_CONSTANT_Utf8 :
-        break;
+                                      break;
       case JVM_CONSTANT_UnresolvedClass :         // fall-through
       case JVM_CONSTANT_UnresolvedClassInError:
-        ShouldNotReachHere();     // Only JVM_CONSTANT_ClassIndex should be present
-        break;
+                                      ShouldNotReachHere();     // Only JVM_CONSTANT_ClassIndex should be present
+                                      break;
       case JVM_CONSTANT_ClassIndex :
-        {
-          int class_index = cp->klass_index_at(index);
-          check_property(valid_symbol_at(class_index),
-                 "Invalid constant pool index %u in class file %s",
-                 class_index, CHECK_(nullHandle));
-          cp->unresolved_klass_at_put(index, cp->symbol_at(class_index));
-        }
-        break;
+                                      {
+                                        int class_index = cp->klass_index_at(index);
+                                        check_property(valid_symbol_at(class_index),
+                                            "Invalid constant pool index %u in class file %s",
+                                            class_index, CHECK_(nullHandle));
+                                        cp->unresolved_klass_at_put(index, cp->symbol_at(class_index));
+                                      }
+                                      break;
       case JVM_CONSTANT_StringIndex :
-        {
-          int string_index = cp->string_index_at(index);
-          check_property(valid_symbol_at(string_index),
-                 "Invalid constant pool index %u in class file %s",
-                 string_index, CHECK_(nullHandle));
-          Symbol* sym = cp->symbol_at(string_index);
-          cp->unresolved_string_at_put(index, sym);
-        }
-        break;
+                                      {
+                                        int string_index = cp->string_index_at(index);
+                                        check_property(valid_symbol_at(string_index),
+                                            "Invalid constant pool index %u in class file %s",
+                                            string_index, CHECK_(nullHandle));
+                                        Symbol* sym = cp->symbol_at(string_index);
+                                        cp->unresolved_string_at_put(index, sym);
+                                      }
+                                      break;
       case JVM_CONSTANT_MethodHandle :
-        {
-          int ref_index = cp->method_handle_index_at(index);
-          check_property(
-            valid_cp_range(ref_index, length) &&
-                EnableInvokeDynamic,
-              "Invalid constant pool index %u in class file %s",
-              ref_index, CHECK_(nullHandle));
-          constantTag tag = cp->tag_at(ref_index);
-          int ref_kind  = cp->method_handle_ref_kind_at(index);
-          switch (ref_kind) {
-          case JVM_REF_getField:
-          case JVM_REF_getStatic:
-          case JVM_REF_putField:
-          case JVM_REF_putStatic:
-            check_property(
-              tag.is_field(),
-              "Invalid constant pool index %u in class file %s (not a field)",
-              ref_index, CHECK_(nullHandle));
-            break;
-          case JVM_REF_invokeVirtual:
-          case JVM_REF_newInvokeSpecial:
-            check_property(
-              tag.is_method(),
-              "Invalid constant pool index %u in class file %s (not a method)",
-              ref_index, CHECK_(nullHandle));
-            break;
-          case JVM_REF_invokeStatic:
-          case JVM_REF_invokeSpecial:
-            check_property(tag.is_method() ||
-                           ((_major_version >= JAVA_8_VERSION) && tag.is_interface_method()),
-               "Invalid constant pool index %u in class file %s (not a method)",
-               ref_index, CHECK_(nullHandle));
-             break;
-          case JVM_REF_invokeInterface:
-            check_property(
-              tag.is_interface_method(),
-              "Invalid constant pool index %u in class file %s (not an interface method)",
-              ref_index, CHECK_(nullHandle));
-            break;
-          default:
-            classfile_parse_error(
-              "Bad method handle kind at constant pool index %u in class file %s",
-              index, CHECK_(nullHandle));
-          }
-          // Keep the ref_index unchanged.  It will be indirected at link-time.
-        }
-        break;
+                                      {
+                                        int ref_index = cp->method_handle_index_at(index);
+                                        check_property(
+                                            valid_cp_range(ref_index, length) &&
+                                            EnableInvokeDynamic,
+                                            "Invalid constant pool index %u in class file %s",
+                                            ref_index, CHECK_(nullHandle));
+                                        constantTag tag = cp->tag_at(ref_index);
+                                        int ref_kind  = cp->method_handle_ref_kind_at(index);
+                                        switch (ref_kind) {
+                                          case JVM_REF_getField:
+                                          case JVM_REF_getStatic:
+                                          case JVM_REF_putField:
+                                          case JVM_REF_putStatic:
+                                            check_property(
+                                                tag.is_field(),
+                                                "Invalid constant pool index %u in class file %s (not a field)",
+                                                ref_index, CHECK_(nullHandle));
+                                            break;
+                                          case JVM_REF_invokeVirtual:
+                                          case JVM_REF_newInvokeSpecial:
+                                            check_property(
+                                                tag.is_method(),
+                                                "Invalid constant pool index %u in class file %s (not a method)",
+                                                ref_index, CHECK_(nullHandle));
+                                            break;
+                                          case JVM_REF_invokeStatic:
+                                          case JVM_REF_invokeSpecial:
+                                            check_property(tag.is_method() ||
+                                                ((_major_version >= JAVA_8_VERSION) && tag.is_interface_method()),
+                                                "Invalid constant pool index %u in class file %s (not a method)",
+                                                ref_index, CHECK_(nullHandle));
+                                            break;
+                                          case JVM_REF_invokeInterface:
+                                            check_property(
+                                                tag.is_interface_method(),
+                                                "Invalid constant pool index %u in class file %s (not an interface method)",
+                                                ref_index, CHECK_(nullHandle));
+                                            break;
+                                          default:
+                                            classfile_parse_error(
+                                                "Bad method handle kind at constant pool index %u in class file %s",
+                                                index, CHECK_(nullHandle));
+                                        }
+                                        // Keep the ref_index unchanged.  It will be indirected at link-time.
+                                      }
+                                      break;
       case JVM_CONSTANT_MethodType :
-        {
-          int ref_index = cp->method_type_index_at(index);
-          check_property(valid_symbol_at(ref_index) && EnableInvokeDynamic,
-                 "Invalid constant pool index %u in class file %s",
-                 ref_index, CHECK_(nullHandle));
-        }
-        break;
+                                      {
+                                        int ref_index = cp->method_type_index_at(index);
+                                        check_property(valid_symbol_at(ref_index) && EnableInvokeDynamic,
+                                            "Invalid constant pool index %u in class file %s",
+                                            ref_index, CHECK_(nullHandle));
+                                      }
+                                      break;
       case JVM_CONSTANT_InvokeDynamic :
-        {
-          int name_and_type_ref_index = cp->invoke_dynamic_name_and_type_ref_index_at(index);
-          check_property(valid_cp_range(name_and_type_ref_index, length) &&
-                         cp->tag_at(name_and_type_ref_index).is_name_and_type(),
-                         "Invalid constant pool index %u in class file %s",
-                         name_and_type_ref_index,
-                         CHECK_(nullHandle));
-          // bootstrap specifier index must be checked later, when BootstrapMethods attr is available
-          break;
-        }
+                                      {
+                                        int name_and_type_ref_index = cp->invoke_dynamic_name_and_type_ref_index_at(index);
+                                        check_property(valid_cp_range(name_and_type_ref_index, length) &&
+                                            cp->tag_at(name_and_type_ref_index).is_name_and_type(),
+                                            "Invalid constant pool index %u in class file %s",
+                                            name_and_type_ref_index,
+                                            CHECK_(nullHandle));
+                                        // bootstrap specifier index must be checked later, when BootstrapMethods attr is available
+                                        break;
+                                      }
       default:
-        fatal(err_msg("bad constant pool tag value %u",
-                      cp->tag_at(index).value()));
-        ShouldNotReachHere();
-        break;
+                                      fatal(err_msg("bad constant pool tag value %u",
+                                            cp->tag_at(index).value()));
+                                      ShouldNotReachHere();
+                                      break;
     } // end of switch
   } // end of for
 
@@ -509,8 +840,8 @@ constantPoolHandle ClassFileParser::parse_constant_pool(TRAPS) {
     for (index = 1; index < length; index++) {          // Index 0 is unused
       if (has_cp_patch_at(index)) {
         guarantee_property(index != this_class_index,
-                           "Illegal constant pool patch to self at %d in class file %s",
-                           index, CHECK_(nullHandle));
+            "Illegal constant pool patch to self at %d in class file %s",
+            index, CHECK_(nullHandle));
         patch_constant_pool(cp, index, cp_patch_at(index), CHECK_(nullHandle));
       }
     }
@@ -526,120 +857,120 @@ constantPoolHandle ClassFileParser::parse_constant_pool(TRAPS) {
     jbyte tag = cp->tag_at(index).value();
     switch (tag) {
       case JVM_CONSTANT_UnresolvedClass: {
-        Symbol*  class_name = cp->unresolved_klass_at(index);
-        // check the name, even if _cp_patches will overwrite it
-        verify_legal_class_name(class_name, CHECK_(nullHandle));
-        break;
-      }
+                                           Symbol*  class_name = cp->unresolved_klass_at(index);
+                                           // check the name, even if _cp_patches will overwrite it
+                                           verify_legal_class_name(class_name, CHECK_(nullHandle));
+                                           break;
+                                         }
       case JVM_CONSTANT_NameAndType: {
-        if (_need_verify && _major_version >= JAVA_7_VERSION) {
-          int sig_index = cp->signature_ref_index_at(index);
-          int name_index = cp->name_ref_index_at(index);
-          Symbol*  name = cp->symbol_at(name_index);
-          Symbol*  sig = cp->symbol_at(sig_index);
-          guarantee_property(sig->utf8_length() != 0,
-            "Illegal zero length constant pool entry at %d in class %s",
-            sig_index, CHECK_(nullHandle));
-          if (sig->byte_at(0) == JVM_SIGNATURE_FUNC) {
-            verify_legal_method_signature(name, sig, CHECK_(nullHandle));
-          } else {
-            verify_legal_field_signature(name, sig, CHECK_(nullHandle));
-          }
-        }
-        break;
-      }
+                                       if (_need_verify && _major_version >= JAVA_7_VERSION) {
+                                         int sig_index = cp->signature_ref_index_at(index);
+                                         int name_index = cp->name_ref_index_at(index);
+                                         Symbol*  name = cp->symbol_at(name_index);
+                                         Symbol*  sig = cp->symbol_at(sig_index);
+                                         guarantee_property(sig->utf8_length() != 0,
+                                             "Illegal zero length constant pool entry at %d in class %s",
+                                             sig_index, CHECK_(nullHandle));
+                                         if (sig->byte_at(0) == JVM_SIGNATURE_FUNC) {
+                                           verify_legal_method_signature(name, sig, CHECK_(nullHandle));
+                                         } else {
+                                           verify_legal_field_signature(name, sig, CHECK_(nullHandle));
+                                         }
+                                       }
+                                       break;
+                                     }
       case JVM_CONSTANT_InvokeDynamic:
       case JVM_CONSTANT_Fieldref:
       case JVM_CONSTANT_Methodref:
       case JVM_CONSTANT_InterfaceMethodref: {
-        int name_and_type_ref_index = cp->name_and_type_ref_index_at(index);
-        // already verified to be utf8
-        int name_ref_index = cp->name_ref_index_at(name_and_type_ref_index);
-        // already verified to be utf8
-        int signature_ref_index = cp->signature_ref_index_at(name_and_type_ref_index);
-        Symbol*  name = cp->symbol_at(name_ref_index);
-        Symbol*  signature = cp->symbol_at(signature_ref_index);
-        if (tag == JVM_CONSTANT_Fieldref) {
-          verify_legal_field_name(name, CHECK_(nullHandle));
-          if (_need_verify && _major_version >= JAVA_7_VERSION) {
-            // Signature is verified above, when iterating NameAndType_info.
-            // Need only to be sure it's non-zero length and the right type.
-            if (signature->utf8_length() == 0 ||
-                signature->byte_at(0) == JVM_SIGNATURE_FUNC) {
-              throwIllegalSignature(
-                  "Field", name, signature, CHECK_(nullHandle));
-            }
-          } else {
-            verify_legal_field_signature(name, signature, CHECK_(nullHandle));
-          }
-        } else {
-          verify_legal_method_name(name, CHECK_(nullHandle));
-          if (_need_verify && _major_version >= JAVA_7_VERSION) {
-            // Signature is verified above, when iterating NameAndType_info.
-            // Need only to be sure it's non-zero length and the right type.
-            if (signature->utf8_length() == 0 ||
-                signature->byte_at(0) != JVM_SIGNATURE_FUNC) {
-              throwIllegalSignature(
-                  "Method", name, signature, CHECK_(nullHandle));
-            }
-          } else {
-            verify_legal_method_signature(name, signature, CHECK_(nullHandle));
-          }
-          if (tag == JVM_CONSTANT_Methodref) {
-            // 4509014: If a class method name begins with '<', it must be "<init>".
-            assert(name != NULL, "method name in constant pool is null");
-            unsigned int name_len = name->utf8_length();
-            if (name_len != 0 && name->byte_at(0) == '<') {
-              if (name != vmSymbols::object_initializer_name()) {
-                classfile_parse_error(
-                  "Bad method name at constant pool index %u in class file %s",
-                  name_ref_index, CHECK_(nullHandle));
-              }
-            }
-          }
-        }
-        break;
-      }
+                                              int name_and_type_ref_index = cp->name_and_type_ref_index_at(index);
+                                              // already verified to be utf8
+                                              int name_ref_index = cp->name_ref_index_at(name_and_type_ref_index);
+                                              // already verified to be utf8
+                                              int signature_ref_index = cp->signature_ref_index_at(name_and_type_ref_index);
+                                              Symbol*  name = cp->symbol_at(name_ref_index);
+                                              Symbol*  signature = cp->symbol_at(signature_ref_index);
+                                              if (tag == JVM_CONSTANT_Fieldref) {
+                                                verify_legal_field_name(name, CHECK_(nullHandle));
+                                                if (_need_verify && _major_version >= JAVA_7_VERSION) {
+                                                  // Signature is verified above, when iterating NameAndType_info.
+                                                  // Need only to be sure it's non-zero length and the right type.
+                                                  if (signature->utf8_length() == 0 ||
+                                                      signature->byte_at(0) == JVM_SIGNATURE_FUNC) {
+                                                    throwIllegalSignature(
+                                                        "Field", name, signature, CHECK_(nullHandle));
+                                                  }
+                                                } else {
+                                                  verify_legal_field_signature(name, signature, CHECK_(nullHandle));
+                                                }
+                                              } else {
+                                                verify_legal_method_name(name, CHECK_(nullHandle));
+                                                if (_need_verify && _major_version >= JAVA_7_VERSION) {
+                                                  // Signature is verified above, when iterating NameAndType_info.
+                                                  // Need only to be sure it's non-zero length and the right type.
+                                                  if (signature->utf8_length() == 0 ||
+                                                      signature->byte_at(0) != JVM_SIGNATURE_FUNC) {
+                                                    throwIllegalSignature(
+                                                        "Method", name, signature, CHECK_(nullHandle));
+                                                  }
+                                                } else {
+                                                  verify_legal_method_signature(name, signature, CHECK_(nullHandle));
+                                                }
+                                                if (tag == JVM_CONSTANT_Methodref) {
+                                                  // 4509014: If a class method name begins with '<', it must be "<init>".
+                                                  assert(name != NULL, "method name in constant pool is null");
+                                                  unsigned int name_len = name->utf8_length();
+                                                  if (name_len != 0 && name->byte_at(0) == '<') {
+                                                    if (name != vmSymbols::object_initializer_name()) {
+                                                      classfile_parse_error(
+                                                          "Bad method name at constant pool index %u in class file %s",
+                                                          name_ref_index, CHECK_(nullHandle));
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                              break;
+                                            }
       case JVM_CONSTANT_MethodHandle: {
-        int ref_index = cp->method_handle_index_at(index);
-        int ref_kind  = cp->method_handle_ref_kind_at(index);
-        switch (ref_kind) {
-        case JVM_REF_invokeVirtual:
-        case JVM_REF_invokeStatic:
-        case JVM_REF_invokeSpecial:
-        case JVM_REF_newInvokeSpecial:
-          {
-            int name_and_type_ref_index = cp->name_and_type_ref_index_at(ref_index);
-            int name_ref_index = cp->name_ref_index_at(name_and_type_ref_index);
-            Symbol*  name = cp->symbol_at(name_ref_index);
-            if (ref_kind == JVM_REF_newInvokeSpecial) {
-              if (name != vmSymbols::object_initializer_name()) {
-                classfile_parse_error(
-                  "Bad constructor name at constant pool index %u in class file %s",
-                  name_ref_index, CHECK_(nullHandle));
-              }
-            } else {
-              if (name == vmSymbols::object_initializer_name()) {
-                classfile_parse_error(
-                  "Bad method name at constant pool index %u in class file %s",
-                  name_ref_index, CHECK_(nullHandle));
-              }
-            }
-          }
-          break;
-          // Other ref_kinds are already fully checked in previous pass.
-        }
-        break;
-      }
+                                        int ref_index = cp->method_handle_index_at(index);
+                                        int ref_kind  = cp->method_handle_ref_kind_at(index);
+                                        switch (ref_kind) {
+                                          case JVM_REF_invokeVirtual:
+                                          case JVM_REF_invokeStatic:
+                                          case JVM_REF_invokeSpecial:
+                                          case JVM_REF_newInvokeSpecial:
+                                            {
+                                              int name_and_type_ref_index = cp->name_and_type_ref_index_at(ref_index);
+                                              int name_ref_index = cp->name_ref_index_at(name_and_type_ref_index);
+                                              Symbol*  name = cp->symbol_at(name_ref_index);
+                                              if (ref_kind == JVM_REF_newInvokeSpecial) {
+                                                if (name != vmSymbols::object_initializer_name()) {
+                                                  classfile_parse_error(
+                                                      "Bad constructor name at constant pool index %u in class file %s",
+                                                      name_ref_index, CHECK_(nullHandle));
+                                                }
+                                              } else {
+                                                if (name == vmSymbols::object_initializer_name()) {
+                                                  classfile_parse_error(
+                                                      "Bad method name at constant pool index %u in class file %s",
+                                                      name_ref_index, CHECK_(nullHandle));
+                                                }
+                                              }
+                                            }
+                                            break;
+                                            // Other ref_kinds are already fully checked in previous pass.
+                                        }
+                                        break;
+                                      }
       case JVM_CONSTANT_MethodType: {
-        Symbol* no_name = vmSymbols::type_name(); // place holder
-        Symbol*  signature = cp->method_type_signature_at(index);
-        verify_legal_method_signature(no_name, signature, CHECK_(nullHandle));
-        break;
-      }
+                                      Symbol* no_name = vmSymbols::type_name(); // place holder
+                                      Symbol*  signature = cp->method_type_signature_at(index);
+                                      verify_legal_method_signature(no_name, signature, CHECK_(nullHandle));
+                                      break;
+                                    }
       case JVM_CONSTANT_Utf8: {
-        assert(cp->symbol_at(index)->refcount() != 0, "count corrupted");
-      }
+                                assert(cp->symbol_at(index)->refcount() != 0, "count corrupted");
+                              }
     }  // end of switch
   }  // end of for
 
@@ -1093,17 +1424,27 @@ class FieldAllocationCount: public ResourceObj {
 };
 
 Array<u2>* ClassFileParser::parse_fields(Symbol* class_name,
+                                         Symbol* superKlass,
+                                         constantPoolHandle cp,
                                          bool is_interface,
                                          FieldAllocationCount *fac,
                                          u2* java_fields_count_ptr, TRAPS) {
   ClassFileStream* cfs = stream();
   cfs->guarantee_more(2, CHECK_NULL);  // length
   u2 length = cfs->get_u2_fast();
-  *java_fields_count_ptr = length;
 
   int num_injected = 0;
+  int num_custom_injected = 0;
+  //
+  if (superKlass != NULL && strncmp(superKlass->as_utf8(), "java/lang/Object", 16) == 0) {
+    // add new field for class class_name
+    num_custom_injected = 2;
+  }
+  //
   InjectedField* injected = JavaClasses::get_injected(class_name, &num_injected);
-  int total_fields = length + num_injected;
+  int total_fields = length + num_injected + num_custom_injected;
+
+  *java_fields_count_ptr = length + num_custom_injected;
 
   // The field array starts with tuples of shorts
   // [access, name index, sig index, initial value index, byte offset].
@@ -1215,6 +1556,41 @@ Array<u2>* ClassFileParser::parse_fields(Symbol* class_name,
   }
 
   int index = length;
+
+  if (num_custom_injected != 0) {
+    // insert field bypass_check
+    // find indexes from constant pool
+    int name_index = custom_field_name_index;
+    int signature_index = custom_field_type_index;
+    // Injected field
+    FieldInfo* field = FieldInfo::from_field_array(fa, index);
+    field->initialize(JVM_ACC_PUBLIC,
+                      name_index,
+                      signature_index,
+                      0);
+
+    BasicType type = T_BOOLEAN;
+
+    // Remember how many oops we encountered and compute allocation type
+    FieldAllocationType atype = fac->update(false, type);
+    field->set_allocation_type(atype);
+    index++;
+ 
+    // insert field allow_in_constructor
+    int name_index2 = custom_field2_name_index;
+    int signature_index2 = custom_field2_type_index;
+    FieldInfo* field2 = FieldInfo::from_field_array(fa, index);
+    field2->initialize(JVM_ACC_PUBLIC,
+                      name_index2,
+                      signature_index2,
+                      0);
+    BasicType type2 = T_BOOLEAN;
+    FieldAllocationType atype2 = fac->update(false, type2);
+    field2->set_allocation_type(atype2);
+    index++;
+
+  }
+
   if (num_injected != 0) {
     for (int n = 0; n < num_injected; n++) {
       // Check for duplicates
@@ -1252,6 +1628,9 @@ Array<u2>* ClassFileParser::parse_fields(Symbol* class_name,
       index++;
     }
   }
+
+
+
 
   // Now copy the fields' data from the temporary resource array.
   // Sometimes injected fields already exist in the Java source so
@@ -1999,6 +2378,579 @@ void ClassFileParser::copy_method_annotations(ConstMethod* cm,
   }
 }
 
+// This method is a copy of parse_method(...)
+// where data (method attributes, code, max locals, etc.) 
+// is not extracted from cfs but given directly
+methodHandle ClassFileParser::make_custom_field_read_method(TRAPS) {
+  bool is_interface = false;
+  methodHandle nullHandle;
+  ResourceMark rm(THREAD);
+  // Parse fixed parts
+  //cfs->guarantee_more(8, CHECK_(nullHandle)); // access_flags, name_index, descriptor_index, attributes_count
+
+  int flags = JVM_ACC_PUBLIC; //cfs->get_u2_fast();
+  u2 name_index = custom_method_name_index; //cfs->get_u2_fast();
+  //int cp_size = _cp->length();
+  check_property(
+    valid_symbol_at(name_index),
+    "Illegal constant pool index %u for method name in class file %s",
+    name_index, CHECK_(nullHandle));
+  Symbol*  name = _cp->symbol_at(name_index);
+
+  // make custom field method  name
+
+  verify_legal_method_name(name, CHECK_(nullHandle));
+
+  u2 signature_index = custom_method_type_index; // cfs->get_u2_fast();
+  guarantee_property(
+    valid_symbol_at(signature_index),
+    "Illegal constant pool index %u for method signature in class file %s",
+    signature_index, CHECK_(nullHandle));
+  Symbol*  signature = _cp->symbol_at(signature_index);
+
+  AccessFlags access_flags;
+  if (name == vmSymbols::class_initializer_name()) {
+    // We ignore the other access flags for a valid class initializer.
+    // (JVM Spec 2nd ed., chapter 4.6)
+    if (_major_version < 51) { // backward compatibility
+      flags = JVM_ACC_STATIC;
+    } else if ((flags & JVM_ACC_STATIC) == JVM_ACC_STATIC) {
+      flags &= JVM_ACC_STATIC | JVM_ACC_STRICT;
+    }
+  } else {
+    verify_legal_method_modifiers(flags, is_interface, name, CHECK_(nullHandle));
+  }
+
+  int args_size = -1;  // only used when _need_verify is true
+  if (_need_verify) {
+    args_size = ((flags & JVM_ACC_STATIC) ? 0 : 1) +
+                 verify_legal_method_signature(name, signature, CHECK_(nullHandle));
+    if (args_size > MAX_ARGS_SIZE) {
+      classfile_parse_error("Too many arguments in method signature in class file %s", CHECK_(nullHandle));
+    }
+  }
+
+  access_flags.set_flags(flags & JVM_RECOGNIZED_METHOD_MODIFIERS);
+
+  // Default values for code and exceptions attribute elements
+  u2 max_stack = 0;
+  u2 max_locals = 0;
+  u4 code_length = 0;
+  u1* code_start = 0;
+  u2 exception_table_length = 0;
+  u2* exception_table_start = NULL;
+  Array<int>* exception_handlers = Universe::the_empty_int_array();
+  u2 checked_exceptions_length = 0;
+  u2* checked_exceptions_start = NULL;
+  CompressedLineNumberWriteStream* linenumber_table = NULL;
+  int linenumber_table_length = 0;
+  int total_lvt_length = 0;
+  u2 lvt_cnt = 0;
+  u2 lvtt_cnt = 0;
+  bool lvt_allocated = false;
+  u2 max_lvt_cnt = INITIAL_MAX_LVT_NUMBER;
+  u2 max_lvtt_cnt = INITIAL_MAX_LVT_NUMBER;
+  u2* localvariable_table_length;
+  u2** localvariable_table_start;
+  u2* localvariable_type_table_length;
+  u2** localvariable_type_table_start;
+  u2 method_parameters_length = 0;
+  u1* method_parameters_data = NULL;
+  bool method_parameters_seen = false;
+  bool parsed_code_attribute = false;
+  bool parsed_checked_exceptions_attribute = false;
+  bool parsed_stackmap_attribute = false;
+  // stackmap attribute - JDK1.5
+  u1* stackmap_data = NULL;
+  int stackmap_data_length = 0;
+  u2 generic_signature_index = 0;
+  MethodAnnotationCollector parsed_annotations;
+  u1* runtime_visible_annotations = NULL;
+  int runtime_visible_annotations_length = 0;
+  u1* runtime_invisible_annotations = NULL;
+  int runtime_invisible_annotations_length = 0;
+  u1* runtime_visible_parameter_annotations = NULL;
+  int runtime_visible_parameter_annotations_length = 0;
+  u1* runtime_invisible_parameter_annotations = NULL;
+  int runtime_invisible_parameter_annotations_length = 0;
+  u1* runtime_visible_type_annotations = NULL;
+  int runtime_visible_type_annotations_length = 0;
+  u1* runtime_invisible_type_annotations = NULL;
+  int runtime_invisible_type_annotations_length = 0;
+  bool runtime_invisible_type_annotations_exists = false;
+  u1* annotation_default = NULL;
+  int annotation_default_length = 0;
+
+  // Parse code and exceptions attribute
+//  u2 method_attributes_count = 0; //cfs->get_u2_fast();
+//  while (method_attributes_count--) {
+//    cfs->guarantee_more(6, CHECK_(nullHandle));  // method_attribute_name_index, method_attribute_length
+//    u2 method_attribute_name_index = cfs->get_u2_fast();
+//    u4 method_attribute_length = cfs->get_u4_fast();
+//    check_property(
+//      valid_symbol_at(method_attribute_name_index),
+//      "Invalid method attribute name index %u in class file %s",
+//      method_attribute_name_index, CHECK_(nullHandle));
+//
+//    Symbol* method_attribute_name = _cp->symbol_at(method_attribute_name_index);
+//    if (method_attribute_name == vmSymbols::tag_code()) {
+//      // Parse Code attribute
+      if (_need_verify) {
+        guarantee_property(
+            !access_flags.is_native() && !access_flags.is_abstract(),
+                        "Code attribute in native or abstract methods in class file %s",
+                         CHECK_(nullHandle));
+      }
+//      if (parsed_code_attribute) {
+//        classfile_parse_error("Multiple Code attributes in class file %s", CHECK_(nullHandle));
+//      }
+      parsed_code_attribute = true;
+//
+//      // Stack size, locals size, and code size
+//      if (_major_version == 45 && _minor_version <= 2) {
+//        cfs->guarantee_more(4, CHECK_(nullHandle));
+        max_stack = 2; //cfs->get_u1_fast();
+        max_locals = 1; //cfs->get_u1_fast();
+      int offset = 12;
+        code_length = offset + 11; /* [a_load0][getfield][f-high][f-low][ireturn] */ //cfs->get_u2_fast();
+//      } else {
+//        cfs->guarantee_more(8, CHECK_(nullHandle));
+//        max_stack = cfs->get_u2_fast();
+//        max_locals = cfs->get_u2_fast();
+//        code_length = cfs->get_u4_fast();
+//      }
+      if (_need_verify) {
+        guarantee_property(args_size <= max_locals,
+                           "Arguments can't fit into locals in class file %s", CHECK_(nullHandle));
+        guarantee_property(code_length > 0 && code_length <= MAX_CODE_SIZE,
+                           "Invalid method Code length %u in class file %s",
+                           code_length, CHECK_(nullHandle));
+      }
+      // new instructions
+      u1* instructions = new u1[code_length];
+/*
+      instructions[0] = (u1) Bytecodes::_iconst_1;
+      instructions[1] = (u1) Bytecodes::_ireturn;
+
+*/
+if (offset != 0) {
+      instructions[0] = Bytecodes::_nop;//Bytecodes::_new;
+      instructions[1] = (u1) Bytecodes::_nop;//(java_lang_runtime_exception_ref_index >> 8 & 0xFF);
+      instructions[2] = (u1) Bytecodes::_nop;//(java_lang_runtime_exception_ref_index & 0xFF);
+      instructions[3] = Bytecodes::_nop;//Bytecodes::_dup;
+      instructions[4] = Bytecodes::_nop;//Bytecodes::_invokespecial;
+      instructions[5] = Bytecodes::_nop;//(u1) (exception_init_ref_index >> 8 & 0xFF);
+      instructions[6] = Bytecodes::_nop;//(u1) (exception_init_ref_index & 0xFF);
+      instructions[7] = Bytecodes::_nop;//Bytecodes::_invokevirtual;
+      instructions[8] = (u1) Bytecodes::_nop;//Bytecodes::_astore_1;
+      instructions[9] = (u1) Bytecodes::_nop;//Bytecodes::_aload_1;
+      instructions[10] = (u1) Bytecodes::_nop;//(print_stack_ref_index >> 8 & 0xFF);
+      instructions[11] = (u1) Bytecodes::_nop;//(print_stack_ref_index & 0xFF);
+}
+      // put value of bypass_check on the stack
+      instructions[offset + 0] = (u1) Bytecodes::_aload_0;
+      instructions[offset + 1] = (u1) Bytecodes::_getfield;
+      instructions[offset + 2] = (u1) (custom_field_ref_index >> 8 & 0xFF);
+      instructions[offset + 3] = (u1) (custom_field_ref_index & 0xFF);
+      // put value of allow_in_constructor on the stack
+      instructions[offset + 4] = (u1) Bytecodes::_aload_0;
+      instructions[offset + 5] = (u1) Bytecodes::_getfield;
+      instructions[offset + 6] = (u1) (custom_field2_ref_index >> 8 & 0xFF);
+      instructions[offset + 7] = (u1) (custom_field2_ref_index & 0xFF);
+      // put bypass_check | allow_in_constructor on the stack
+      instructions[offset + 8] = (u1) Bytecodes::_ior;
+      instructions[offset + 9] = (u1) Bytecodes::_nop;//Bytecodes::_iconst_1;
+      instructions[offset + 10] = (u1) Bytecodes::_ireturn;
+/**/
+
+      // Code pointer
+      code_start = instructions; //cfs->get_u1_buffer(); //TODO: modify this to code_start + code_length ???
+      assert(code_start != NULL, "null code start");
+//      cfs->guarantee_more(code_length, CHECK_(nullHandle));
+//      cfs->skip_u1_fast(code_length);
+//
+//      // Exception handler table
+//      cfs->guarantee_more(2, CHECK_(nullHandle));  // exception_table_length
+      exception_table_length = 0; //cfs->get_u2_fast();
+      if (exception_table_length > 0) {
+        exception_table_start =
+              parse_exception_table(code_length, exception_table_length, CHECK_(nullHandle));
+      }
+//
+//      // Parse additional attributes in code attribute
+//      cfs->guarantee_more(2, CHECK_(nullHandle));  // code_attributes_count
+//      u2 code_attributes_count = cfs->get_u2_fast();
+//
+//      unsigned int calculated_attribute_length = 0;
+//
+//      if (_major_version > 45 || (_major_version == 45 && _minor_version > 2)) {
+//        calculated_attribute_length =
+//            sizeof(max_stack) + sizeof(max_locals) + sizeof(code_length);
+//      } else {
+//        // max_stack, locals and length are smaller in pre-version 45.2 classes
+//        calculated_attribute_length = sizeof(u1) + sizeof(u1) + sizeof(u2);
+//      }
+//      calculated_attribute_length +=
+//        code_length +
+//        sizeof(exception_table_length) +
+//        sizeof(code_attributes_count) +
+//        exception_table_length *
+//            ( sizeof(u2) +   // start_pc
+//              sizeof(u2) +   // end_pc
+//              sizeof(u2) +   // handler_pc
+//              sizeof(u2) );  // catch_type_index
+//
+//      while (code_attributes_count--) {
+//        cfs->guarantee_more(6, CHECK_(nullHandle));  // code_attribute_name_index, code_attribute_length
+//        u2 code_attribute_name_index = cfs->get_u2_fast();
+//        u4 code_attribute_length = cfs->get_u4_fast();
+//        calculated_attribute_length += code_attribute_length +
+//                                       sizeof(code_attribute_name_index) +
+//                                       sizeof(code_attribute_length);
+//        check_property(valid_symbol_at(code_attribute_name_index),
+//                       "Invalid code attribute name index %u in class file %s",
+//                       code_attribute_name_index,
+//                       CHECK_(nullHandle));
+//        if (LoadLineNumberTables &&
+//            _cp->symbol_at(code_attribute_name_index) == vmSymbols::tag_line_number_table()) {
+//          // Parse and compress line number table
+//          parse_linenumber_table(code_attribute_length, code_length,
+//            &linenumber_table, CHECK_(nullHandle));
+//
+//        } else if (LoadLocalVariableTables &&
+//                   _cp->symbol_at(code_attribute_name_index) == vmSymbols::tag_local_variable_table()) {
+//          // Parse local variable table
+//          if (!lvt_allocated) {
+//            localvariable_table_length = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2,  INITIAL_MAX_LVT_NUMBER);
+//            localvariable_table_start = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2*, INITIAL_MAX_LVT_NUMBER);
+//            localvariable_type_table_length = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2,  INITIAL_MAX_LVT_NUMBER);
+//            localvariable_type_table_start = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2*, INITIAL_MAX_LVT_NUMBER);
+//            lvt_allocated = true;
+//          }
+//          if (lvt_cnt == max_lvt_cnt) {
+//            max_lvt_cnt <<= 1;
+//            localvariable_table_length = REALLOC_RESOURCE_ARRAY(u2, localvariable_table_length, lvt_cnt, max_lvt_cnt);
+//            localvariable_table_start  = REALLOC_RESOURCE_ARRAY(u2*, localvariable_table_start, lvt_cnt, max_lvt_cnt);
+//          }
+//          localvariable_table_start[lvt_cnt] =
+//            parse_localvariable_table(code_length,
+//                                      max_locals,
+//                                      code_attribute_length,
+//                                      &localvariable_table_length[lvt_cnt],
+//                                      false,    // is not LVTT
+//                                      CHECK_(nullHandle));
+//          total_lvt_length += localvariable_table_length[lvt_cnt];
+//          lvt_cnt++;
+//        } else if (LoadLocalVariableTypeTables &&
+//                   _major_version >= JAVA_1_5_VERSION &&
+//                   _cp->symbol_at(code_attribute_name_index) == vmSymbols::tag_local_variable_type_table()) {
+//          if (!lvt_allocated) {
+//            localvariable_table_length = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2,  INITIAL_MAX_LVT_NUMBER);
+//            localvariable_table_start = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2*, INITIAL_MAX_LVT_NUMBER);
+//            localvariable_type_table_length = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2,  INITIAL_MAX_LVT_NUMBER);
+//            localvariable_type_table_start = NEW_RESOURCE_ARRAY_IN_THREAD(
+//              THREAD, u2*, INITIAL_MAX_LVT_NUMBER);
+//            lvt_allocated = true;
+//          }
+//          // Parse local variable type table
+//          if (lvtt_cnt == max_lvtt_cnt) {
+//            max_lvtt_cnt <<= 1;
+//            localvariable_type_table_length = REALLOC_RESOURCE_ARRAY(u2, localvariable_type_table_length, lvtt_cnt, max_lvtt_cnt);
+//            localvariable_type_table_start  = REALLOC_RESOURCE_ARRAY(u2*, localvariable_type_table_start, lvtt_cnt, max_lvtt_cnt);
+//          }
+//          localvariable_type_table_start[lvtt_cnt] =
+//            parse_localvariable_table(code_length,
+//                                      max_locals,
+//                                      code_attribute_length,
+//                                      &localvariable_type_table_length[lvtt_cnt],
+//                                      true,     // is LVTT
+//                                      CHECK_(nullHandle));
+//          lvtt_cnt++;
+//        } else if (_major_version >= Verifier::STACKMAP_ATTRIBUTE_MAJOR_VERSION &&
+//                   _cp->symbol_at(code_attribute_name_index) == vmSymbols::tag_stack_map_table()) {
+//          // Stack map is only needed by the new verifier in JDK1.5.
+//          if (parsed_stackmap_attribute) {
+//            classfile_parse_error("Multiple StackMapTable attributes in class file %s", CHECK_(nullHandle));
+//          }
+//          stackmap_data = parse_stackmap_table(code_attribute_length, CHECK_(nullHandle));
+//          stackmap_data_length = code_attribute_length;
+//          parsed_stackmap_attribute = true;
+//        } else {
+//          // Skip unknown attributes
+//          cfs->skip_u1(code_attribute_length, CHECK_(nullHandle));
+//        }
+//      }
+//      // check method attribute length
+//      if (_need_verify) {
+//        guarantee_property(method_attribute_length == calculated_attribute_length,
+//                           "Code segment has wrong length in class file %s", CHECK_(nullHandle));
+//      }
+//    } else if (method_attribute_name == vmSymbols::tag_exceptions()) {
+//      // Parse Exceptions attribute
+//      if (parsed_checked_exceptions_attribute) {
+//        classfile_parse_error("Multiple Exceptions attributes in class file %s", CHECK_(nullHandle));
+//      }
+//      parsed_checked_exceptions_attribute = true;
+//      checked_exceptions_start =
+//            parse_checked_exceptions(&checked_exceptions_length,
+//                                     method_attribute_length,
+//                                     CHECK_(nullHandle));
+//    } else if (method_attribute_name == vmSymbols::tag_method_parameters()) {
+//      // reject multiple method parameters
+//      if (method_parameters_seen) {
+//        classfile_parse_error("Multiple MethodParameters attributes in class file %s", CHECK_(nullHandle));
+//      }
+//      method_parameters_seen = true;
+//      method_parameters_length = cfs->get_u1_fast();
+//      if (method_attribute_length != (method_parameters_length * 4u) + 1u) {
+//        classfile_parse_error(
+//          "Invalid MethodParameters method attribute length %u in class file",
+//          method_attribute_length, CHECK_(nullHandle));
+//      }
+//      method_parameters_data = cfs->get_u1_buffer();
+//      cfs->skip_u2_fast(method_parameters_length);
+//      cfs->skip_u2_fast(method_parameters_length);
+//      // ignore this attribute if it cannot be reflected
+//      if (!SystemDictionary::Parameter_klass_loaded())
+//        method_parameters_length = 0;
+//    } else if (method_attribute_name == vmSymbols::tag_synthetic()) {
+//      if (method_attribute_length != 0) {
+//        classfile_parse_error(
+//          "Invalid Synthetic method attribute length %u in class file %s",
+//          method_attribute_length, CHECK_(nullHandle));
+//      }
+//      // Should we check that there hasn't already been a synthetic attribute?
+//      access_flags.set_is_synthetic();
+//    } else if (method_attribute_name == vmSymbols::tag_deprecated()) { // 4276120
+//      if (method_attribute_length != 0) {
+//        classfile_parse_error(
+//          "Invalid Deprecated method attribute length %u in class file %s",
+//          method_attribute_length, CHECK_(nullHandle));
+//      }
+//    } else if (_major_version >= JAVA_1_5_VERSION) {
+//      if (method_attribute_name == vmSymbols::tag_signature()) {
+//        if (method_attribute_length != 2) {
+//          classfile_parse_error(
+//            "Invalid Signature attribute length %u in class file %s",
+//            method_attribute_length, CHECK_(nullHandle));
+//        }
+//        generic_signature_index = parse_generic_signature_attribute(CHECK_(nullHandle));
+//      } else if (method_attribute_name == vmSymbols::tag_runtime_visible_annotations()) {
+//        runtime_visible_annotations_length = method_attribute_length;
+//        runtime_visible_annotations = cfs->get_u1_buffer();
+//        assert(runtime_visible_annotations != NULL, "null visible annotations");
+//        cfs->guarantee_more(runtime_visible_annotations_length, CHECK_(nullHandle));
+//        parse_annotations(runtime_visible_annotations,
+//            runtime_visible_annotations_length, &parsed_annotations,
+//            CHECK_(nullHandle));
+//        cfs->skip_u1_fast(runtime_visible_annotations_length);
+//      } else if (PreserveAllAnnotations && method_attribute_name == vmSymbols::tag_runtime_invisible_annotations()) {
+//        runtime_invisible_annotations_length = method_attribute_length;
+//        runtime_invisible_annotations = cfs->get_u1_buffer();
+//        assert(runtime_invisible_annotations != NULL, "null invisible annotations");
+//        cfs->skip_u1(runtime_invisible_annotations_length, CHECK_(nullHandle));
+//      } else if (method_attribute_name == vmSymbols::tag_runtime_visible_parameter_annotations()) {
+//        runtime_visible_parameter_annotations_length = method_attribute_length;
+//        runtime_visible_parameter_annotations = cfs->get_u1_buffer();
+//        assert(runtime_visible_parameter_annotations != NULL, "null visible parameter annotations");
+//        cfs->skip_u1(runtime_visible_parameter_annotations_length, CHECK_(nullHandle));
+//      } else if (PreserveAllAnnotations && method_attribute_name == vmSymbols::tag_runtime_invisible_parameter_annotations()) {
+//        runtime_invisible_parameter_annotations_length = method_attribute_length;
+//        runtime_invisible_parameter_annotations = cfs->get_u1_buffer();
+//        assert(runtime_invisible_parameter_annotations != NULL, "null invisible parameter annotations");
+//        cfs->skip_u1(runtime_invisible_parameter_annotations_length, CHECK_(nullHandle));
+//      } else if (method_attribute_name == vmSymbols::tag_annotation_default()) {
+//        annotation_default_length = method_attribute_length;
+//        annotation_default = cfs->get_u1_buffer();
+//        assert(annotation_default != NULL, "null annotation default");
+//        cfs->skip_u1(annotation_default_length, CHECK_(nullHandle));
+//      } else if (method_attribute_name == vmSymbols::tag_runtime_visible_type_annotations()) {
+//        if (runtime_visible_type_annotations != NULL) {
+//          classfile_parse_error(
+//            "Multiple RuntimeVisibleTypeAnnotations attributes for method in class file %s",
+//            CHECK_(nullHandle));
+//        }
+//        runtime_visible_type_annotations_length = method_attribute_length;
+//        runtime_visible_type_annotations = cfs->get_u1_buffer();
+//        assert(runtime_visible_type_annotations != NULL, "null visible type annotations");
+//        // No need for the VM to parse Type annotations
+//        cfs->skip_u1(runtime_visible_type_annotations_length, CHECK_(nullHandle));
+//      } else if (method_attribute_name == vmSymbols::tag_runtime_invisible_type_annotations()) {
+//        if (runtime_invisible_type_annotations_exists) {
+//          classfile_parse_error(
+//            "Multiple RuntimeInvisibleTypeAnnotations attributes for method in class file %s",
+//            CHECK_(nullHandle));
+//        } else {
+//          runtime_invisible_type_annotations_exists = true;
+//        }
+//        if (PreserveAllAnnotations) {
+//          runtime_invisible_type_annotations_length = method_attribute_length;
+//          runtime_invisible_type_annotations = cfs->get_u1_buffer();
+//          assert(runtime_invisible_type_annotations != NULL, "null invisible type annotations");
+//        }
+//        cfs->skip_u1(method_attribute_length, CHECK_(nullHandle));
+//      } else {
+//        // Skip unknown attributes
+//        cfs->skip_u1(method_attribute_length, CHECK_(nullHandle));
+//      }
+//    } else {
+//      // Skip unknown attributes
+//      cfs->skip_u1(method_attribute_length, CHECK_(nullHandle));
+//    }
+//  }
+
+  if (linenumber_table != NULL) {
+    linenumber_table->write_terminator();
+    linenumber_table_length = linenumber_table->position();
+  }
+
+  // Make sure there's at least one Code attribute in non-native/non-abstract method
+  if (_need_verify) {
+    guarantee_property(access_flags.is_native() || access_flags.is_abstract() || parsed_code_attribute,
+                      "Absent Code attribute in method that is not native or abstract in class file %s", CHECK_(nullHandle));
+  }
+
+  // All sizing information for a Method* is finally available, now create it
+  InlineTableSizes sizes(
+      total_lvt_length,
+      linenumber_table_length,
+      exception_table_length,
+      checked_exceptions_length,
+      method_parameters_length,
+      generic_signature_index,
+      runtime_visible_annotations_length +
+           runtime_invisible_annotations_length,
+      runtime_visible_parameter_annotations_length +
+           runtime_invisible_parameter_annotations_length,
+      runtime_visible_type_annotations_length +
+           runtime_invisible_type_annotations_length,
+      annotation_default_length,
+      0);
+
+  Method* m = Method::allocate(
+      _loader_data, code_length, access_flags, &sizes,
+      ConstMethod::NORMAL, CHECK_(nullHandle));
+
+  ClassLoadingService::add_class_method_size(m->size()*HeapWordSize);
+
+  // Fill in information from fixed part (access_flags already set)
+  m->set_constants(_cp);
+  m->set_name_index(name_index);
+  m->set_signature_index(signature_index);
+
+  ResultTypeFinder rtf(_cp->symbol_at(signature_index));
+  m->constMethod()->set_result_type(rtf.type());
+
+  if (args_size >= 0) {
+    m->set_size_of_parameters(args_size);
+  } else {
+    m->compute_size_of_parameters(THREAD);
+  }
+#ifdef ASSERT
+  if (args_size >= 0) {
+    m->compute_size_of_parameters(THREAD);
+    assert(args_size == m->size_of_parameters(), "");
+  }
+#endif
+
+  // Fill in code attribute information
+  m->set_max_stack(max_stack);
+  m->set_max_locals(max_locals);
+  if (stackmap_data != NULL) {
+    m->constMethod()->copy_stackmap_data(_loader_data, stackmap_data,
+                                         stackmap_data_length, CHECK_NULL);
+  }
+
+  // Copy byte codes
+  m->set_code(code_start);
+
+  // Copy line number table
+  if (linenumber_table != NULL) {
+    memcpy(m->compressed_linenumber_table(),
+           linenumber_table->buffer(), linenumber_table_length);
+  }
+
+  // Copy exception table
+  if (exception_table_length > 0) {
+    int size =
+      exception_table_length * sizeof(ExceptionTableElement) / sizeof(u2);
+    copy_u2_with_conversion((u2*) m->exception_table_start(),
+                             exception_table_start, size);
+  }
+
+  // Copy method parameters
+  if (method_parameters_length > 0) {
+    MethodParametersElement* elem = m->constMethod()->method_parameters_start();
+    for (int i = 0; i < method_parameters_length; i++) {
+      elem[i].name_cp_index = Bytes::get_Java_u2(method_parameters_data);
+      method_parameters_data += 2;
+      elem[i].flags = Bytes::get_Java_u2(method_parameters_data);
+      method_parameters_data += 2;
+    }
+  }
+
+  // Copy checked exceptions
+  if (checked_exceptions_length > 0) {
+    int size = checked_exceptions_length * sizeof(CheckedExceptionElement) / sizeof(u2);
+    copy_u2_with_conversion((u2*) m->checked_exceptions_start(), checked_exceptions_start, size);
+  }
+
+//  // Copy class file LVT's/LVTT's into the HotSpot internal LVT.
+//  if (total_lvt_length > 0) {
+//    promoted_flags->set_has_localvariable_table();
+//    copy_localvariable_table(m->constMethod(), lvt_cnt,
+//                             localvariable_table_length,
+//                             localvariable_table_start,
+//                             lvtt_cnt,
+//                             localvariable_type_table_length,
+//                             localvariable_type_table_start, CHECK_NULL);
+//  }
+
+//  if (parsed_annotations.has_any_annotations())
+//    parsed_annotations.apply_to(m);
+
+  // Copy annotations
+  copy_method_annotations(m->constMethod(),
+                          runtime_visible_annotations,
+                          runtime_visible_annotations_length,
+                          runtime_invisible_annotations,
+                          runtime_invisible_annotations_length,
+                          runtime_visible_parameter_annotations,
+                          runtime_visible_parameter_annotations_length,
+                          runtime_invisible_parameter_annotations,
+                          runtime_invisible_parameter_annotations_length,
+                          runtime_visible_type_annotations,
+                          runtime_visible_type_annotations_length,
+                          runtime_invisible_type_annotations,
+                          runtime_invisible_type_annotations_length,
+                          annotation_default,
+                          annotation_default_length,
+                          CHECK_NULL);
+
+  if (name == vmSymbols::finalize_method_name() &&
+      signature == vmSymbols::void_method_signature()) {
+    if (m->is_empty_method()) {
+      _has_empty_finalizer = true;
+    } else {
+      _has_finalizer = true;
+    }
+  }
+  if (name == vmSymbols::object_initializer_name() &&
+      signature == vmSymbols::void_method_signature() &&
+      m->is_vanilla_constructor()) {
+    _has_vanilla_constructor = true;
+  }
+
+  NOT_PRODUCT(m->verify());
+  return m;
+}
 
 // Note: the parse_method below is big and clunky because all parsing of the code and exceptions
 // attribute is inlined. This is cumbersome to avoid since we inline most of the parts in the
@@ -2153,7 +3105,7 @@ methodHandle ClassFileParser::parse_method(bool is_interface,
                            code_length, CHECK_(nullHandle));
       }
       // Code pointer
-      code_start = cfs->get_u1_buffer();
+      code_start = cfs->get_u1_buffer(); //TODO: modify this to code_start + code_length ???
       assert(code_start != NULL, "null code start");
       cfs->guarantee_more(code_length, CHECK_(nullHandle));
       cfs->skip_u1_fast(code_length);
@@ -2547,6 +3499,8 @@ methodHandle ClassFileParser::parse_method(bool is_interface,
 // are added to klass's access_flags.
 
 Array<Method*>* ClassFileParser::parse_methods(bool is_interface,
+                                               bool is_final,
+                                               Symbol* superKlass,
                                                AccessFlags* promoted_flags,
                                                bool* has_final_method,
                                                bool* declares_default_methods,
@@ -2554,10 +3508,16 @@ Array<Method*>* ClassFileParser::parse_methods(bool is_interface,
   ClassFileStream* cfs = stream();
   cfs->guarantee_more(2, CHECK_NULL);  // length
   u2 length = cfs->get_u2_fast();
+
+  u2 custom_methods_len = (superKlass != NULL 
+      && strncmp(superKlass->as_utf8(), "java/lang/Object", 16) == 0
+      && !is_final
+      ) ? 1 : 0;
+
   if (length == 0) {
     _methods = Universe::the_empty_method_array();
   } else {
-    _methods = MetadataFactory::new_array<Method*>(_loader_data, length, NULL, CHECK_NULL);
+    _methods = MetadataFactory::new_array<Method*>(_loader_data, length + custom_methods_len, NULL, CHECK_NULL);
 
     HandleMark hm(THREAD);
     for (int index = 0; index < length; index++) {
@@ -2574,7 +3534,19 @@ Array<Method*>* ClassFileParser::parse_methods(bool is_interface,
         && !method->is_abstract() && !method->is_static()) {
         *declares_default_methods = true;
       }
+
+		  ////// check if we need to transform this method
+
+      //////
+
       _methods->at_put(index, method());
+    }
+
+    if (custom_methods_len >= 1) {
+      methodHandle custom_method = make_custom_field_read_method(CHECK_NULL);
+      _methods->at_put(length, custom_method());
+    } else {
+     // NOT generating isObjectInit()
     }
 
     if (_need_verify && length > 1) {
@@ -3800,6 +4772,7 @@ instanceKlassHandle ClassFileParser::parseClassFile(Symbol* name,
     _need_verify = Verifier::should_verify_for(class_loader(), verify);
   }
 
+  _need_verify = true;
   // Set the verify flag in stream
   cfs->set_verify(_need_verify);
 
@@ -3863,7 +4836,7 @@ instanceKlassHandle ClassFileParser::parseClassFile(Symbol* name,
 
   // Check if verification needs to be relaxed for this class file
   // Do not restrict it to jdk1.0 or jdk1.1 to maintain backward compatibility (4982376)
-  _relax_verify = Verifier::relax_verify_for(class_loader());
+  _relax_verify = false; //Verifier::relax_verify_for(class_loader());
 
   // Constant pool
   constantPoolHandle cp = parse_constant_pool(CHECK_(nullHandle));
@@ -3953,6 +4926,11 @@ instanceKlassHandle ClassFileParser::parseClassFile(Symbol* name,
     instanceKlassHandle super_klass = parse_super_class(super_class_index,
                                                         CHECK_NULL);
 
+    Symbol* tmp_super_sym = NULL;
+    if (super_class_index > 0 && super_klass.is_null()) {
+      tmp_super_sym  = cp->klass_name_at(super_class_index);
+    }
+
     // Interfaces
     u2 itfs_len = cfs->get_u2_fast();
     Array<Klass*>* local_interfaces =
@@ -3963,14 +4941,20 @@ instanceKlassHandle ClassFileParser::parseClassFile(Symbol* name,
     // Fields (offsets are filled in later)
     FieldAllocationCount fac;
     Array<u2>* fields = parse_fields(class_name,
+                                     tmp_super_sym,
+                                     cp,
                                      access_flags.is_interface(),
                                      &fac, &java_fields_count,
                                      CHECK_(nullHandle));
+
+
     // Methods
     bool has_final_method = false;
     AccessFlags promoted_flags;
     promoted_flags.set_flags(0);
     Array<Method*>* methods = parse_methods(access_flags.is_interface(),
+                                            access_flags.is_final(),
+                                            tmp_super_sym,
                                             &promoted_flags,
                                             &has_final_method,
                                             &declares_default_methods,
@@ -4098,7 +5082,7 @@ instanceKlassHandle ClassFileParser::parseClassFile(Symbol* name,
            "sanity");
 
     // Fill in information already parsed
-    this_klass->set_should_verify_class(verify);
+    this_klass->set_should_verify_class(true);//verify);
     jint lh = Klass::instance_layout_helper(info.instance_size, false);
     this_klass->set_layout_helper(lh);
     assert(this_klass->oop_is_instance(), "layout is correct");

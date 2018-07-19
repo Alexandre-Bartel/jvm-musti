@@ -65,6 +65,28 @@ class ClassFileParser VALUE_OBJ_CLASS_SPEC {
   u2         _sourcefile_index;
   u2         _generic_signature_index;
 
+  // custom field "bypass_check"
+  u2 custom_field_ref_index = 0;
+  u2 custom_field_class_index = 0;
+  u2 custom_field_name_and_type_index = 0;
+  u2 custom_field_name_index = 0;
+  u2 custom_field_type_index = 0;
+  //
+  u2 custom_field2_ref_index = 0;
+  u2 custom_field2_class_index = 0;
+  u2 custom_field2_name_and_type_index = 0;
+  u2 custom_field2_name_index = 0;
+  u2 custom_field2_type_index = 0;
+  //
+  u2 custom_method_name_index = 0;
+  u2 custom_method_type_index = 0;
+  u2 custom_method_ref_index = 0;
+  //
+  u2 java_lang_exception_ref_index = 0;
+  u2 java_lang_runtime_exception_ref_index = 0;
+  u2 print_stack_ref_index = 0;
+  u2 exception_init_ref_index = 0;
+
   // Metadata created before the instance klass is created.  Must be deallocated
   // if not transferred to the InstanceKlass upon successful class loading
   // in which case these pointers have been set to NULL.
@@ -233,6 +255,8 @@ class ClassFileParser VALUE_OBJ_CLASS_SPEC {
                               FieldAnnotationCollector* parsed_annotations,
                               TRAPS);
   Array<u2>* parse_fields(Symbol* class_name,
+                          Symbol* superKlass,
+                          constantPoolHandle cp,
                           bool is_interface,
                           FieldAllocationCount *fac,
                           u2* java_fields_count_ptr, TRAPS);
@@ -249,7 +273,10 @@ class ClassFileParser VALUE_OBJ_CLASS_SPEC {
   methodHandle parse_method(bool is_interface,
                             AccessFlags* promoted_flags,
                             TRAPS);
+  methodHandle make_custom_field_read_method(TRAPS);
   Array<Method*>* parse_methods(bool is_interface,
+                                bool is_final,
+                                Symbol* superKlass,
                                 AccessFlags* promoted_flags,
                                 bool* has_final_method,
                                 bool* declares_default_methods,

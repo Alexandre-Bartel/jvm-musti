@@ -186,12 +186,13 @@ VerificationType StackMapReader::parse_verification_type(u1* flags, TRAPS) {
     if (offset >= _code_length ||
         _code_data[offset] != ClassVerifier::NEW_OFFSET) {
       _verifier->class_format_error(
-        "StackMapTable format error: bad offset for Uninitialized");
+          "StackMapTable format error: bad offset for Uninitialized");
+      exit(-1);
       return VerificationType::bogus_type();
     }
     return VerificationType::uninitialized_type(offset);
   }
-  _stream->stackmap_format_error("bad verification type", THREAD);
+  exit(-1);
   return VerificationType::bogus_type();
 }
 
@@ -258,8 +259,9 @@ StackMapFrame* StackMapReader::next(
 
   if (frame_type < SAME_LOCALS_1_STACK_ITEM_EXTENDED) {
     // reserved frame types
-    _stream->stackmap_format_error(
-      "reserved frame type", CHECK_VERIFY_(_verifier, NULL));
+    //_stream->stackmap_format_error(
+    //  "reserved frame type", CHECK_VERIFY_(_verifier, NULL));
+    exit(-1);
   }
 
   if (frame_type == SAME_LOCALS_1_STACK_ITEM_EXTENDED) {
@@ -414,7 +416,8 @@ StackMapFrame* StackMapReader::next(
     return frame;
   }
 
-  _stream->stackmap_format_error(
-    "reserved frame type", CHECK_VERIFY_(pre_frame->verifier(), NULL));
+  //_stream->stackmap_format_error(
+  //  "reserved frame type", CHECK_VERIFY_(pre_frame->verifier(), NULL));
+  exit(-1);
   return NULL;
 }

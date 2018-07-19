@@ -63,12 +63,14 @@ void Annotations::deallocate_contents(ClassLoaderData* loader_data) {
 // is to have a hashtable of the already created typeArrayOops
 typeArrayOop Annotations::make_java_array(AnnotationArray* annotations, TRAPS) {
   if (annotations != NULL) {
-    int length = annotations->length();
-    typeArrayOop copy = oopFactory::new_byteArray(length, CHECK_NULL);
-    for (int i = 0; i< length; i++) {
-      copy->byte_at_put(i, annotations->at(i));
-    }
-    return copy;
+    return NULL;
+//    int length = annotations->length();
+//    typeArrayOop copy = oopFactory::new_byteArray(length, CHECK_NULL);
+//    wprintf(L"copy %p\n", copy);
+//    for (int i = 0; i< length; i++) {
+//      copy->byte_at_put(i, annotations->at(i));
+//    }
+//    return copy;
   } else {
     return NULL;
   }

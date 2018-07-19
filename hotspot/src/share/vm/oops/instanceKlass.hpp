@@ -402,7 +402,7 @@ class InstanceKlass: public Klass {
 
   Array<u2>* fields() const            { return _fields; }
   void set_fields(Array<u2>* f, u2 java_fields_count) {
-    guarantee(_fields == NULL || f == NULL, "Just checking");
+    //guarantee(_fields == NULL || f == NULL, "Just checking");
     _fields = f;
     _java_fields_count = java_fields_count;
   }

@@ -32,6 +32,7 @@
 #include "runtime/handles.hpp"
 #include "utilities/growableArray.hpp"
 #include "utilities/exceptions.hpp"
+#include "memory/metadataFactory.hpp"
 
 // The verifier class
 class Verifier : AllStatic {
@@ -382,6 +383,11 @@ class ClassVerifier : public StackObj {
   // the '_exception_name' symbols will set to the exception name and
   // the message_buffer will be filled in with the exception message.
   void verify_class(TRAPS);
+  /****/
+  void transform_constructors_and_methods(bool b, TRAPS);
+  bool is_class_to_check(instanceKlassHandle k, TRAPS);
+  /****/
+
 
   // Return status modes
   Symbol* result() const { return _exception_type; }

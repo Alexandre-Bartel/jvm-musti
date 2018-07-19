@@ -1407,6 +1407,199 @@ bool ConstantPool::compare_operand_to(int idx1, constantPoolHandle cp2, int idx2
   return false;
 } // end compare_operand_to()
 
+// find field reference by name
+// returns first reference which matches
+// returns -1 is there is no match
+int ConstantPool::find_field_reference_by_name(char* name, int len) {
+  for (int i = 0; i < length(); i++) {
+    int index = i;
+    int tag_value = tag_at(index).value();
+    switch (tag_value) {
+      case JVM_CONSTANT_Fieldref:
+        {  
+          int name_and_type_index = name_and_type_ref_index_at(index);
+          int name_index = name_ref_index_at(name_and_type_index);
+
+          Symbol* sym = symbol_at(name_index);
+          if (sym == NULL) { 
+            wprintf(L"oups symbol is null!!!\n");
+          } else {
+            char* sym_utf8 = sym->as_utf8();
+            if (strncmp(name, sym_utf8, len + 1) == 0) {
+              return index;
+            }
+          }
+
+        }
+    }
+
+
+  }
+  return -1;
+}
+
+
+// find method reference by name
+// returns first reference which matches
+// returns -1 is there is no match
+int ConstantPool::find_method_reference_by_name_only(char* class_name, int class_name_len, char* method_name, int method_name_len, char* signature, int signature_len, TRAPS) {
+  for (int i = 0; i < length(); i++) {
+    int index = i;
+    int tag_value = tag_at(index).value();
+    switch (tag_value) {
+      case JVM_CONSTANT_Methodref:
+        { 
+          int name_and_type_ref_index = name_and_type_ref_index_at(index);
+          int klass_ref_index = klass_ref_index_at(index);
+          int method_name_index = name_ref_index_at(name_and_type_ref_index);
+          int signature_index = signature_ref_index_at(name_and_type_ref_index);
+          Klass* klass = klass_at(klass_ref_index, CHECK_NULL);
+
+          Symbol* klass_sym = klass->name();
+          Symbol* method_name_sym = symbol_at(method_name_index);
+          Symbol* signature_sym = symbol_at(signature_index);
+          if (klass_sym == NULL) { 
+            // oups klass symbol is null!!!
+            continue;
+          }
+          if (method_name_sym == NULL) { 
+            // oups method name symbol is null!!!
+            continue;
+          }
+          if (signature_sym == NULL) { 
+            // oups signature is null!!!
+            continue;
+          }
+          char* klass_sym_utf8 = klass_sym->as_utf8();
+          char* method_name_sym_utf8 = method_name_sym->as_utf8();
+          char* signature_sym_utf8 = signature_sym->as_utf8();
+          if (strncmp(method_name, method_name_sym_utf8, method_name_len + 1) == 0
+              && strncmp(signature, signature_sym_utf8, signature_len + 1) == 0
+             ) {
+            return index;
+          }
+
+        }
+    }
+
+
+  }
+  return -1;
+}
+
+
+// find method reference by name
+// returns first reference which matches
+// returns -1 is there is no match
+int ConstantPool::find_method_reference_by_name(char* class_name, int class_name_len, char* method_name, int method_name_len, char* signature, int signature_len, TRAPS) {
+  for (int i = 0; i < length(); i++) {
+    int index = i;
+    int tag_value = tag_at(index).value();
+    switch (tag_value) {
+      case JVM_CONSTANT_Methodref:
+        { 
+          int name_and_type_ref_index = name_and_type_ref_index_at(index);
+          int klass_ref_index = klass_ref_index_at(index);
+          int method_name_index = name_ref_index_at(name_and_type_ref_index);
+          int signature_index = signature_ref_index_at(name_and_type_ref_index);
+          Klass* klass = klass_at(klass_ref_index, CHECK_NULL);
+
+          Symbol* klass_sym = klass->name();
+          Symbol* method_name_sym = symbol_at(method_name_index);
+          Symbol* signature_sym = symbol_at(signature_index);
+          if (klass_sym == NULL) { 
+            // oups klass symbol is null!!!
+            continue;
+          }
+          if (method_name_sym == NULL) { 
+            // oups method name symbol is null!!!
+            continue;
+          }
+          if (signature_sym == NULL) { 
+            // oups signature is null!!!
+            continue;
+          }
+          char* klass_sym_utf8 = klass_sym->as_utf8();
+          char* method_name_sym_utf8 = method_name_sym->as_utf8();
+          char* signature_sym_utf8 = signature_sym->as_utf8();
+          if (strncmp(class_name, klass_sym_utf8, class_name_len + 1) == 0
+              && strncmp(method_name, method_name_sym_utf8, method_name_len + 1) == 0
+              && strncmp(signature, signature_sym_utf8, signature_len + 1) == 0
+             ) {
+            return index;
+          }
+
+        }
+    }
+
+  }
+  return -1;
+}
+
+
+
+bool ConstantPool::is_at_method(int method_index, char* class_name, char* method_name, TRAPS) {
+  int name_and_type_ref_index = name_and_type_ref_index_at(method_index);
+  int klass_ref_index = klass_ref_index_at(method_index);
+
+  int method_name_index = name_ref_index_at(name_and_type_ref_index);
+  int signature_index = signature_ref_index_at(name_and_type_ref_index);
+  Klass* klass = klass_at(klass_ref_index, CHECK_false);
+
+  Symbol* klass_sym = klass->name();
+  Symbol* method_name_sym = symbol_at(method_name_index);
+  Symbol* signature_sym = symbol_at(signature_index);
+  char* klass_sym_utf8 = klass_sym->as_utf8();
+  char* method_name_sym_utf8 = method_name_sym->as_utf8();
+  char* signature_sym_utf8 = signature_sym->as_utf8();
+  if (strcmp(class_name, klass_sym_utf8) == 0
+      && strcmp(method_name, method_name_sym_utf8) == 0
+     ) {
+    return true;
+  }
+
+  return false;
+}
+
+int  ConstantPool::find_field_name_index(char* name, int len) {
+  int name_and_type_index = find_field_reference_by_name(name, len);
+  return name_ref_index_at(name_and_type_index);
+}
+
+int  ConstantPool::find_field_descriptor_index(char* name, int len) {
+  int name_and_type_index = find_field_reference_by_name(name, len);
+  return signature_ref_index_at(name_and_type_index);
+}
+
+// find class name index
+// returns first reference which matches
+// returns -1 is there is no match
+int ConstantPool::find_class_name_index(char* class_name, int class_name_len) {
+  for (int i = 0; i < length(); i++) {
+    int index = i;
+    int tag_value = tag_at(index).value();
+
+    switch (tag_value) {
+      case JVM_CONSTANT_Class:
+      case JVM_CONSTANT_ClassIndex:
+      case JVM_CONSTANT_UnresolvedClass:
+      { 
+        Symbol* klass_sym = klass_name_at(index);
+        char* klass_sym_utf8 = klass_sym->as_utf8();
+        if (strncmp(class_name, klass_sym_utf8, class_name_len + 1) == 0) {
+          return index;
+        }
+
+      }
+    }
+
+
+  }
+  // ERROR: no class reference found for "class_name"
+  exit(-1);
+  return -1;
+}
+
 // Search constant pool search_cp for a bootstrap specifier that matches
 // this constant pool's bootstrap specifier at pattern_i index.
 // Return the index of a matching bootstrap specifier or (-1) if there is no match.

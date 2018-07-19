@@ -175,7 +175,9 @@ class StackMapReader : StackObj {
 
   void check_end(TRAPS) {
     if (!_stream->at_end()) {
-      StackMapStream::stackmap_format_error("wrong attribute size", CHECK);
+      //StackMapStream::stackmap_format_error("wrong attribute size", CHECK);
+      wprintf(L"wrong stuff here\n");
+      exit(-10);
     }
   }
 };

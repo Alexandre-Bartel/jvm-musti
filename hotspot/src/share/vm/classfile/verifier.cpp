@@ -61,6 +61,9 @@
 # include "bytes_ppc.hpp"
 #endif
 
+#include "stdio.h"
+#include "wchar.h"
+
 #define NOFAILOVER_MAJOR_VERSION                       51
 #define NONZERO_PADDING_BYTES_IN_SWITCH_MAJOR_VERSION  51
 #define STATIC_METHOD_IN_INTERFACE_MAJOR_VERSION       52
@@ -94,7 +97,7 @@ static void* verify_byte_codes_fn() {
 // Methods in Verifier
 
 bool Verifier::should_verify_for(oop class_loader, bool should_verify_class) {
-  return (class_loader == NULL || !should_verify_class) ?
+  return (!should_verify_class) ?
     BytecodeVerificationLocal : BytecodeVerificationRemote;
 }
 
@@ -112,6 +115,8 @@ bool Verifier::verify(instanceKlassHandle klass, Verifier::Mode mode, bool shoul
   HandleMark hm;
   ResourceMark rm(THREAD);
 
+
+
   Symbol* exception_name = NULL;
   const size_t message_buffer_len = klass->name()->utf8_length() + 1024;
   char* message_buffer = NEW_RESOURCE_ARRAY(char, message_buffer_len);
@@ -121,6 +126,15 @@ bool Verifier::verify(instanceKlassHandle klass, Verifier::Mode mode, bool shoul
   bool can_failover = FailOverToOldVerifier &&
       klass->major_version() < NOFAILOVER_MAJOR_VERSION;
 
+  Symbol* superKlass = NULL;
+  Klass* super_klass = klass->super();
+  if (super_klass != NULL) {
+    superKlass = super_klass->name();
+  }
+  if (superKlass != NULL && strcmp(superKlass->as_utf8(), "java/lang/Object") == 0) {
+    should_verify_class = true;
+	}
+
   // If the class should be verified, first see if we can use the split
   // verifier.  If not, or if verification fails and FailOverToOldVerifier
   // is set, then call the inference verifier.
@@ -128,8 +142,24 @@ bool Verifier::verify(instanceKlassHandle klass, Verifier::Mode mode, bool shoul
     if (TraceClassInitialization) {
       tty->print_cr("Start class verification for: %s", klassName);
     }
-    if (klass->major_version() >= STACKMAP_ATTRIBUTE_MAJOR_VERSION) {
-      ClassVerifier split_verifier(klass, THREAD);
+    /****/
+    ClassVerifier split_verifier(klass, THREAD);
+    bool transform_only_constructors = false;
+    bool is_class_to_check = true; 
+    /* opti1, opti2
+    if (klass->is_public() && !klass->is_final() && is_class_to_check) {
+      transform_only_constructors = false;
+      split_verifier.transform_constructors_and_methods(transform_only_constructors, THREAD);
+    } else {
+      transform_only_constructors = true;
+      split_verifier.transform_constructors_and_methods(transform_only_constructors, THREAD);
+    }
+    */
+    /* naive */
+    split_verifier.transform_constructors_and_methods(transform_only_constructors, THREAD);
+    /* */
+    if (klass->major_version() >= 49 ) { //STACKMAP_ATTRIBUTE_MAJOR_VERSION) 
+      //ClassVerifier split_verifier(klass, THREAD);
       split_verifier.verify_class(THREAD);
       exception_name = split_verifier.result();
       if (can_failover && !HAS_PENDING_EXCEPTION &&
@@ -146,6 +176,7 @@ bool Verifier::verify(instanceKlassHandle klass, Verifier::Mode mode, bool shoul
         exception_message = split_verifier.exception_message();
       }
     } else {
+      // INFERENCE VERIFIER for klassName
       exception_name = inference_verify(
           klass, message_buffer, message_buffer_len, THREAD);
     }
@@ -188,17 +219,17 @@ bool Verifier::verify(instanceKlassHandle klass, Verifier::Mode mode, bool shoul
 bool Verifier::is_eligible_for_verification(instanceKlassHandle klass, bool should_verify_class) {
   Symbol* name = klass->name();
   Klass* refl_magic_klass = SystemDictionary::reflect_MagicAccessorImpl_klass();
-
+  
   bool is_reflect = refl_magic_klass != NULL && klass->is_subtype_of(refl_magic_klass);
 
-  return (should_verify_for(klass->class_loader(), should_verify_class) &&
+  bool is_eligible = (should_verify_for(klass->class_loader(), should_verify_class) &&
     // return if the class is a bootstrapping class
     // or defineClass specified not to verify by default (flags override passed arg)
     // We need to skip the following four for bootstraping
     name != vmSymbols::java_lang_Object() &&
     name != vmSymbols::java_lang_Class() &&
     name != vmSymbols::java_lang_String() &&
-    name != vmSymbols::java_lang_Throwable() &&
+    //name != vmSymbols::java_lang_Throwable() &&
 
     // Can not verify the bytecodes for shared classes because they have
     // already been rewritten to contain constant pool cache indices,
@@ -214,6 +245,9 @@ bool Verifier::is_eligible_for_verification(instanceKlassHandle klass, bool shou
     // guarded by Universe::is_gte_jdk14x_version()/UseNewReflection.
     // Also for lambda generated code, gte jdk8
     (!is_reflect || VerifyReflectionBytecodes));
+
+ return is_eligible;
+
 }
 
 Symbol* Verifier::inference_verify(
@@ -547,6 +581,93 @@ TypeOrigin ClassVerifier::ref_ctx(const char* sig, TRAPS) {
   return TypeOrigin::implicit(vt);
 }
 
+char* classes[] = {
+  // list of class names
+};
+
+bool ClassVerifier::is_class_to_check(instanceKlassHandle k, TRAPS) {
+  for (int i = 0; i< 144; i++) { 
+    char* s = classes[i];
+    if (strcmp(k->name()->as_utf8(), s) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void ClassVerifier::transform_constructors_and_methods(bool transform_only_constructors, TRAPS) {
+
+  int transform_bytecode = 1;
+  int add_new_field = 0;
+
+  bool super_is_object = false;
+  Klass* superk = _klass->super();
+  if (superk != NULL) {
+    super_is_object = strncmp(superk->name()->as_utf8(), "java/lang/Object", 16) == 0 ? true : false;
+  }
+
+  Array<Method*>* methods = _klass->methods();
+  int num_methods = methods->length();
+
+  for (int index = 0; index < num_methods; index++) {
+    // Check for recursive re-verification before each method.
+    if (was_recursively_verified())  return;
+
+    Method* m = methods->at(index);
+
+    // transform bytecode to add check for super calls
+    // also updates the stackmap frames
+    if (transform_bytecode != 0 
+        && strncmp(_klass->name()->as_utf8(), "java/lang/Object", 16) != 0
+        && ! _klass->is_final()
+       ) {
+      char* m_name = m->name()->as_utf8();
+      if (strncmp(m_name, "<init>", 6) == 0) {
+        if (super_is_object) {
+          Method* m_new = m->transform_bytecode_for_constructor_method(CHECK);
+          // TODO: delete m
+          methods->at_put(index, m_new);
+          m = m_new;
+        } else {
+          // no need to analyze constructor
+        }
+        continue;
+      } 
+
+      if (transform_only_constructors) {
+        continue;
+      }
+      
+      if (strncmp(m_name, "<clinit>", 6) == 0) {
+        // no transformation
+      } else if (m->is_static() 
+          || m->is_native() 
+          || m->is_abstract() 
+          || m->is_final() 
+          || m->is_package_private()) {// || m->is_overpass()) {
+        // If m is native or abstract, skip it.  It is checked in class file
+        // parser that methods do not override a final method.  Overpass methods
+        // are trusted since the VM generates them.
+        
+        // no transformation
+      } else {
+        if (strncmp(m_name, "isObjectInit", 12) != 0) {
+          Method* m_new = m->transform_bytecode_for_normal_method(CHECK);
+          // TODO: delete m
+          methods->at_put(index, m_new);
+          m = m_new;
+        } else {
+          // skip isObjectInit method "m"
+        }
+      }
+    }
+
+
+  } // end of for(Method m in class)
+
+}
+
+
 void ClassVerifier::verify_class(TRAPS) {
   if (VerboseVerification) {
     tty->print_cr("Verifying class %s with new format",
@@ -561,12 +682,13 @@ void ClassVerifier::verify_class(TRAPS) {
     if (was_recursively_verified())  return;
 
     Method* m = methods->at(index);
-    if (m->is_native() || m->is_abstract() || m->is_overpass()) {
+    if (m->is_native() || m->is_abstract()) {// || m->is_overpass()) {
       // If m is native or abstract, skip it.  It is checked in class file
       // parser that methods do not override a final method.  Overpass methods
       // are trusted since the VM generates them.
       continue;
     }
+
     verify_method(methodHandle(THREAD, m), CHECK_VERIFY(this));
   }
 
@@ -1780,14 +1902,14 @@ void ClassVerifier::verify_local_variable_table(u4 code_length, char* code_data,
       u2 start_bci = table[i].start_bci;
       u2 length = table[i].length;
 
-      if (start_bci >= code_length || code_data[start_bci] == 0) {
+      if (start_bci >= code_length /* TODO might be possible since table not yet updated. || code_data[start_bci] == 0 */) {
         class_format_error(
           "Illegal local variable table start_pc %d", start_bci);
         return;
       }
       u4 end_bci = (u4)(start_bci + length);
       if (end_bci != code_length) {
-        if (end_bci >= code_length || code_data[end_bci] == 0) {
+        if (end_bci >= code_length /* TODO might be possible since we update bytecode. || code_data[end_bci] == 0 */) {
           class_format_error( "Illegal local variable table length %d", length);
           return;
         }

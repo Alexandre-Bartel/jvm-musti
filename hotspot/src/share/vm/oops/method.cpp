@@ -25,6 +25,7 @@
 #include "precompiled.hpp"
 #include "classfile/metadataOnStackMark.hpp"
 #include "classfile/systemDictionary.hpp"
+#include "classfile/stackMapTableFormat.hpp"
 #include "code/debugInfoRec.hpp"
 #include "gc_interface/collectedHeap.inline.hpp"
 #include "interpreter/bytecodeStream.hpp"
@@ -56,6 +57,7 @@
 #include "runtime/signature.hpp"
 #include "utilities/quickSort.hpp"
 #include "utilities/xmlstream.hpp"
+#include "string.h"
 
 PRAGMA_FORMAT_MUTE_WARNINGS_FOR_GCC
 
@@ -176,8 +178,744 @@ char* Method::name_and_sig_as_C_string(Klass* klass, Symbol* method_name, Symbol
   return buf;
 }
 
+Method* Method::transform_bytecode_for_constructor_method(TRAPS) {
+  if (already_transformed) {
+    return this;
+  }
+  already_transformed = true;
+
+  methodHandle mh = this;
+  Relocator* reloc = new Relocator(mh, NULL);
+
+  InstanceKlass* ik = method_holder();
+  ConstantPool* cp = ik->constants();
+
+  // can't be null since we do not instrument java.lang.Object
+  Symbol* super_name_sym = ik->super()->name(); 
+
+  char* super_name_utf8 = super_name_sym->as_utf8();
+  int field_ref_index = cp->find_field_reference_by_name("bypass_check", 13);
+  char field_ref_index_low = field_ref_index & 0xFF;
+  char field_ref_index_high = (field_ref_index >> 8) & 0xFF;
+
+  u2 allow_field_ref_index = cp->find_field_reference_by_name("allow_in_constructor", 20);
+  u1 allow_field_ref_index_low = allow_field_ref_index & 0xFF;
+  u1 allow_field_ref_index_high = (allow_field_ref_index >> 8) & 0xFF;
+
+  int nbr_return_instructions = 0;
+  int nbr_super_call = 0;
+  int goto_to_patch = 0;
+
+  methodHandle new_mh = this;
+  int current_delta = 0;
+
+  for (int i = 0; i < code_size(); ) {
+    if (i == code_size() -1) {
+      // skipping last instruction... 
+      // otherwise appending code later at the end of the bytecode won't work (infinite loop?)
+      break;
+    }
+    address current_opcode = code_base() + i;
+    if (*current_opcode == Bytecodes::_return) {
+      nbr_return_instructions += 1;
+      int new_size = 3;
+      u_char* new_return = new u_char[new_size];
+      for (int jj = 0; jj < new_size; jj++) { new_return[jj] = 0; }
+      new_return[0] = 172; // Bytecodes::_goto;
+      new_return[1] = 173; // goto_delta_offset >> 8 & 0xFF;
+      new_return[2] = 174; // goto_delta_offset & 0xFF;
+      reloc = new Relocator(new_mh, NULL);
+      int previous_code_size = new_mh->code_size();
+      new_mh = reloc->insert_space_at(i + current_delta, new_size, new_return, CHECK_NULL); 
+      delete [] new_return;
+      current_delta += new_mh->code_size() - previous_code_size;
+      goto_to_patch++;
+
+      // new return instruction is now at address "i"
+      
+    } else if (*current_opcode == Bytecodes::_invokespecial) {
+      // high: *(current_opcode + 1), low: *(current_opcode + 2));
+      u2 method_index = ((u2)*(current_opcode + 1)) << 8 | *(current_opcode + 2);
+      int is_super_method = cp->is_at_method(method_index, super_name_utf8, "<init>", CHECK_NULL);
+      if (is_super_method) {
+        nbr_super_call += 1;
+        int new_super_size = 8;
+        u_char* new_super = new u_char[new_super_size];
+        for (int jj = 0; jj < new_super_size; jj++) { new_super[jj] = 0; }
+        new_super[0] = *current_opcode;
+        new_super[1] = *(current_opcode + 1);
+        new_super[2] = *(current_opcode + 2);
+        // this.allow_in_constructor = 1
+        new_super[3] = (u1)Bytecodes::_aload_0;
+        new_super[4] = (u1)Bytecodes::_iconst_1;
+        new_super[5] = (u1)Bytecodes::_putfield;
+        new_super[6] = (u1)allow_field_ref_index_high;
+        new_super[7] = (u1)allow_field_ref_index_low;
+        reloc = new Relocator(new_mh, NULL);
+        int previous_code_size = new_mh->code_size();
+        new_mh = reloc->insert_space_at(i + current_delta, new_super_size, new_super, CHECK_NULL); 
+        delete [] new_super;
+        current_delta += new_mh->code_size() - previous_code_size;
+        // new super instruction at "i"
+      }
+    }
+    i += Bytecodes::length_at(this, current_opcode);
+  }
+
+  assert(nbr_super_call == 1, "there should only be one call to super() in a constructor."); 
+
+  // add instructions at the end of the bytecode...
+  int new_instructions_size = 12;
+  u_char* new_instructions = new u_char[new_instructions_size];
+  int offset = 1;
+  new_instructions[0] = *(new_mh->code_base() + new_mh->code_size() - 1);
+  // this.bypass_check = 1
+  new_instructions[offset +  0] = (u1)Bytecodes::_aload_0;
+  new_instructions[offset +  1] = (u1)Bytecodes::_iconst_1;
+  new_instructions[offset +  2] = (u1)Bytecodes::_putfield;
+  new_instructions[offset +  3] = (u1)field_ref_index_high;
+  new_instructions[offset +  4] = (u1)field_ref_index_low;
+  // this.allow_in_constructor = 0
+  new_instructions[offset +  5] = (u1)Bytecodes::_aload_0;
+  new_instructions[offset +  6] = (u1)Bytecodes::_iconst_0;
+  new_instructions[offset +  7] = (u1)Bytecodes::_putfield;
+  new_instructions[offset +  8] = (u1)allow_field_ref_index_high;
+  new_instructions[offset +  9] = (u1)allow_field_ref_index_low;
+  // return
+  new_instructions[offset + 10] = (u1)Bytecodes::_return;
+  reloc = new Relocator(new_mh, NULL);
+  new_mh = reloc->insert_space_at(new_mh->code_size() - 1, 
+      new_instructions_size, new_instructions, CHECK_NULL); 
+  delete [] new_instructions;
+
+  // patch goto instructions...
+  int goto_patched = 0;
+  for (int i = 0; i < new_mh->code_size() - 2; i++) {
+    // patch with known size
+    int current_code_size = new_mh->code_size();
+    address ci = new_mh->code_base() + i;
+    if (*(ci) == 172 && *(ci + 1) == 173 && *(ci + 2) == 174) {
+      int goto_delta_offset = current_code_size - new_instructions_size - i;
+      *(ci + 0) = Bytecodes::_goto;
+      *(ci + 1) = goto_delta_offset >> 8 & 0xFF;
+      *(ci + 2) = goto_delta_offset & 0xFF;
+      goto_patched++;
+      i += 2;
+      break;
+    }
+  }
+
+  int patched_last_return = 0;
+  for (int i = 0; i < new_mh->code_size() - new_instructions_size + 1; i++) {
+    address current_opcode = new_mh->code_base() + i;
+    if (*current_opcode == Bytecodes::_return) {
+      int new_size = 3;
+      u_char* new_return = new u_char[new_size];
+
+      for (int jj = 0; jj < new_size; jj++) { 
+        new_return[jj] = 0; 
+      }
+
+      int goto_delta_offset = 3;
+      new_return[0] = Bytecodes::_goto;
+      new_return[1] = goto_delta_offset >> 8 & 0xFF;
+      new_return[2] = goto_delta_offset & 0xFF;
+      reloc = new Relocator(new_mh, NULL);
+      new_mh = reloc->insert_space_at(i, new_size, new_return, CHECK_NULL); 
+      goto_to_patch++;
+      patched_last_return++;
+      delete [] new_return;
+      // patched last return instruction at "i"
+    }
+    i += Bytecodes::length_at(this, current_opcode);
+  }
+
+  assert(goto_to_patch == goto_patched, "failed to patch all gotos in the bytecode!\n");
+  assert(patched_last_return <= 1, "more than one last return is not possible!\n");
+
+  int goto_offset = new_mh->code_size() - new_instructions_size + 1;
+
+  //add goto stackmap frame
+  new_mh->add_goto_stackmap_frame(goto_offset, CHECK_NULL);
+
+  int max_stack = new_mh->verifier_max_stack();
+  int new_max_stack = max_stack >= 2 ? max_stack : 2;
+  new_mh->set_max_stack(new_max_stack);
+
+  return new_mh();
+
+}
+
+Method* Method::transform_bytecode_for_normal_method(TRAPS) {
+  if (already_transformed) {
+    return this;
+  }
+  already_transformed = true;
+
+  // 
+  // step 1/3: update bytecode
+  //
+
+  InstanceKlass* ik = method_holder();
+  ConstantPool* cp = ik->constants();
+  int method_field_ref_index = cp->find_method_reference_by_name_only("java/lang/Object", 16, "isObjectInit", 12, "()Z", 3, CHECK_NULL);
+  u1 method_field_ref_index_low = method_field_ref_index & 0xFF;
+  u1 method_field_ref_index_high = (method_field_ref_index >> 8) & 0xFF;
+  int method_exception_ref_index = cp->find_method_reference_by_name("java/lang/RuntimeException", 26, "<init>", 6, "()V", 3, CHECK_NULL);
+  char method_exception_ref_index_low = method_exception_ref_index & 0xFF;
+  char method_exception_ref_index_high = (method_exception_ref_index >> 8) & 0xFF;
+  int runtime_exception_class_index = cp->find_class_name_index("java/lang/RuntimeException", 26);
+  char runtime_exception_ref_index_low = runtime_exception_class_index & 0xFF;
+  char runtime_exception_ref_index_high = (runtime_exception_class_index >> 8) & 0xFF;
+  int new_instructions_size = 16;
+  short target_offset = new_instructions_size - 4 /* if instruction offset */;
+  char target_offset_low = target_offset & 0xFF;
+  char target_offset_high = (target_offset >> 8) & 0xFF;
+  // previous size = code_size()
+  int new_size = code_size() + new_instructions_size;
+  unsigned char* new_instructions = new unsigned char[new_size];
+
+  new_instructions[ 0] = (u1)Bytecodes::_aload_0;
+  new_instructions[ 1] = (u1)Bytecodes::_invokevirtual;
+  new_instructions[ 2] = (u1)method_field_ref_index_high;
+  new_instructions[ 3] = (u1)method_field_ref_index_low;
+  new_instructions[ 4] = (u1)Bytecodes::_ifne;
+  new_instructions[ 5] = (u1)target_offset_high;
+  new_instructions[ 6] = (u1)target_offset_low;
+  new_instructions[ 7] = (u1)Bytecodes::_new;
+  new_instructions[ 8] = (u1)runtime_exception_ref_index_high; 
+  new_instructions[ 9] = (u1)runtime_exception_ref_index_low;
+  new_instructions[10] = (u1)Bytecodes::_dup;
+  new_instructions[11] = (u1)Bytecodes::_invokespecial;
+  new_instructions[12] = (u1)method_exception_ref_index_high;
+  new_instructions[13] = (u1)method_exception_ref_index_low;
+  new_instructions[14] = (u1)Bytecodes::_nop; // tableswitch instructions require 4 byte alignement
+  new_instructions[15] = (u1)Bytecodes::_athrow;
+
+  memcpy(new_instructions + new_instructions_size, code_base(), code_size());
+
+  Method* new_m = clone_with_new_code_stackmap_exception(new_instructions, new_size, CHECK_NULL);
+
+  bool first_frame_is_zero = false;
+  Array<u1>* sm = stackmap_data();
+  if (sm != NULL) {
+    first_frame_is_zero = sm->at(2) == 0 ? true : false;
+  }
+
+  new_m->updateStackMapFrames(new_instructions_size, CHECK_NULL);
+
+  new_m->updateExceptionOffsets(new_instructions_size, CHECK_NULL);
+
+  int max_stack = new_m->verifier_max_stack();
+  int new_max_stack = max_stack >= 2 ? max_stack : 2;
+  new_m->set_max_stack(new_max_stack);
+
+  return new_m;
+
+}
+
+void Method::updateStackMapFrames(int new_instructions_size, TRAPS) {
+  // 
+  // step 2/3: update stackmap frames
+  //
+  InstanceKlass* ik = method_holder();
+
+  if (!has_stackmap_table()) {
+    Array<u1>* new_stackmap = MetadataFactory::new_writeable_array<u1>(
+        ik->class_loader_data(), 
+        3, 
+        CHECK);
+    new_stackmap->at_put(0, 0);
+    new_stackmap->at_put(1, 1);
+    new_stackmap->at_put(2, new_instructions_size);
+    set_stackmap_data(new_stackmap);
+    return;
+  }
+
+  int k = 0; // offset in old stack map
+  int n = 0; // offset in new stack map
+
+  Array<u1>* stackmap = stackmap_data();
+  int stackmap_len = stackmap->length();
+
+  int offset_first_frame_is_zero = (stackmap->at(2) == 0) ? true : false;
+  if (offset_first_frame_is_zero) {
+    stackmap->at_put(2, new_instructions_size);
+    return;
+  }
+
+  // add one byte to the new array for the new frame
+  int new_stackmap_len = stackmap_len + 1;
+  Array<u1>* new_stackmap = MetadataFactory::new_writeable_array<u1>(
+      ik->class_loader_data(), 
+      new_stackmap_len, 
+      CHECK);
+
+  // update frame count 
+  u2 frame_count = stackmap->at(k++) << 8 | stackmap->at(k++);
+  frame_count++;
+  new_stackmap->at_put(n++, frame_count >> 8 & 0xFF);
+  new_stackmap->at_put(n++, frame_count & 0xFF);
+  new_stackmap->at_put(n++, new_instructions_size);
+  for (; k < stackmap_len && n < new_stackmap_len;) {
+    // note on offsets (from http://docs.oracle.com/javase/specs/jvms/se7/html/jvms-4.html#jvms-4.7.4):
+    // Each stack_map_frame structure specifies the type state at a
+    // particular bytecode offset. Each frame type specifies (explicitly or
+    // implicitly) a value, offset_delta, that is used to calculate the
+    // actual bytecode offset at which a frame applies. The bytecode offset
+    // at which a frame applies is calculated by adding offset_delta + 1 to
+    // the bytecode offset of the previous frame, unless the previous frame
+    // is the initial frame of the method, in which case the bytecode
+    // offset is offset_delta. 
+    if (k == 2) {
+      u1 byte1 = stackmap->at(k++);
+      u2 offset = 0;
+
+      if (byte1 >= 0  && byte1 <=63 
+          || byte1 >= 64 && byte1 <= 127) {
+        byte1 -= 1;
+        new_stackmap->at_put(n++, byte1);
+      } else if (byte1 >= 247 && byte1 <=255) {
+        offset = (u2)(stackmap->at(k++) << 8) + stackmap->at(k++);
+        offset -= 1;
+        new_stackmap->at_put(n++, byte1);
+        new_stackmap->at_put(n++, offset >> 8 & 0xFF);
+        new_stackmap->at_put(n++, offset & 0xFF);
+      }
+    } else {
+      new_stackmap->at_put(n++, stackmap->at(k++));
+    }
+  }
+
+  // TODO: update offset in full frame containing uninitialized offset
+
+  stack_map_table* sm_table =
+    stack_map_table::at((address)new_stackmap->adr_at(0));
+
+  int count = sm_table->number_of_entries();
+  stack_map_frame* frame = sm_table->entries();
+  int delta = new_instructions_size;
+  int bci = 0;
+
+  for (int i = 0; i < count; ++i) {
+
+    // The stack map frame may contain verification types, if so we need to
+    // check and update any Uninitialized type's bci (no matter where it is).
+    int number_of_types = frame->number_of_types();
+    verification_type_info* types = frame->types();
+
+    for (int i = 0; i < number_of_types; ++i) {
+      if (types->is_uninitialized() && types->bci() >= bci) {
+        int new_offset = types->bci() + delta;
+      }
+      types = types->next();
+    }
+
+
+    // Full frame has stack values too
+    full_frame* ff = frame->as_full_frame();
+    if (ff != NULL) {
+      address eol = (address)types;
+      number_of_types = ff->stack_slots(eol);
+      types = ff->stack(eol);
+      for (int i = 0; i < number_of_types; ++i) {
+        if (types->is_uninitialized() && types->bci() >= bci) {
+          int new_offset = types->bci() + delta;
+          types->set_bci(new_offset);
+        }
+        types = types->next();
+      }
+    }
+
+    frame = frame->next();
+  }
+
+
+  set_stackmap_data(new_stackmap);
+}
+
+
+// Create a new array, copying the src array but adding a hole at
+// the specified location
+static Array<u1>* insert_hole_at(ClassLoaderData* loader_data,
+    size_t where, int hole_sz, Array<u1>* src) {
+  Thread* THREAD = Thread::current();
+  Array<u1>* dst =
+    MetadataFactory::new_array<u1>(loader_data, src->length() + hole_sz, 0, CHECK_NULL);
+
+  address src_addr = (address)src->adr_at(0);
+  address dst_addr = (address)dst->adr_at(0);
+
+  memcpy(dst_addr, src_addr, where);
+  memcpy(dst_addr + where + hole_sz,
+      src_addr + where, src->length() - where);
+  return dst;
+}
+
+
+// The width of instruction at "bci" is changing by "delta".  
+// Adjust the stack map frames.
+// code taken from void Relocator::adjust_stack_map_table(int bci, int delta)
+void Method::ajust_stack_map_table(int bci, int delta) {
+  if (!has_stackmap_table()) {
+    return;
+  }
+  Array<u1>* data = this->stackmap_data();
+  // The data in the array is a classfile representation of the stackmap table
+  stack_map_table* sm_table =
+      stack_map_table::at((address)data->adr_at(0));
+
+  int count = sm_table->number_of_entries();
+  stack_map_frame* frame = sm_table->entries();
+  int bci_iter = -1;
+  bool offset_adjusted = false; // only need to adjust one offset
+
+  for (int i = 0; i < count; ++i) {
+    int offset_delta = frame->offset_delta();
+    bci_iter += offset_delta;
+
+    if (!offset_adjusted && bci_iter > bci) {
+      u1 opcode = *(code_base() + bci_iter);
+      if (opcode == Bytecodes::_goto) {
+        return;
+      }
+      int new_offset_delta = offset_delta + delta;
+
+      if (frame->is_valid_offset(new_offset_delta)) {
+        frame->set_offset_delta(new_offset_delta);
+      } else {
+        assert(frame->is_same_frame() ||
+               frame->is_same_locals_1_stack_item_frame(),
+               "Frame must be one of the compressed forms");
+        // The new delta exceeds the capacity of the 'same_frame' or
+        // 'same_frame_1_stack_item_frame' frame types.  We need to
+        // convert these frames to the extended versions, but the extended
+        // version is bigger and requires more room.  So we allocate a
+        // new array and copy the data, being sure to leave u2-sized hole
+        // right after the 'frame_type' for the new offset field.
+        //
+        // We can safely ignore the reverse situation as a small delta
+        // can still be used in an extended version of the frame.
+
+        size_t frame_offset = (address)frame - (address)data->adr_at(0);
+
+        ClassLoaderData* loader_data = this->method_holder()->class_loader_data();
+        Array<u1>* new_data = insert_hole_at(loader_data, frame_offset + 1, 2, data);
+        if (new_data == NULL) {
+          return; // out-of-memory?
+        }
+        // Deallocate old data
+        MetadataFactory::free_array<u1>(loader_data, data);
+        data = new_data;
+
+        address frame_addr = (address)(data->adr_at(0) + frame_offset);
+        frame = stack_map_frame::at(frame_addr);
+
+
+        // Now convert the frames in place
+        if (frame->is_same_frame()) {
+          same_frame_extended::create_at(frame_addr, new_offset_delta);
+        } else {
+          same_locals_1_stack_item_extended::create_at(
+            frame_addr, new_offset_delta, NULL);
+          // the verification_info_type should already be at the right spot
+        }
+      }
+      offset_adjusted = true; // needs to be done only once, since subsequent
+                              // values are offsets from the current
+    }
+
+    // The stack map frame may contain verification types, if so we need to
+    // check and update any Uninitialized type's bci (no matter where it is).
+    int number_of_types = frame->number_of_types();
+    verification_type_info* types = frame->types();
+
+    for (int i = 0; i < number_of_types; ++i) {
+      if (types->is_uninitialized() && types->bci() > bci) {
+        types->set_bci(types->bci() + delta);
+      }
+      types = types->next();
+    }
+
+    // Full frame has stack values too
+    full_frame* ff = frame->as_full_frame();
+    if (ff != NULL) {
+      address eol = (address)types;
+      number_of_types = ff->stack_slots(eol);
+      types = ff->stack(eol);
+      for (int i = 0; i < number_of_types; ++i) {
+        if (types->is_uninitialized() && types->bci() > bci) {
+          types->set_bci(types->bci() + delta);
+        }
+        types = types->next();
+      }
+    }
+
+    frame = frame->next();
+  }
+
+  this->set_stackmap_data(data); // in case it has changed
+  
+
+}
+
+// The width of instruction at "bci" is changing by "delta".  
+// Adjust the stack map frames.
+// code taken from void Relocator::adjust_stack_map_table(int bci, int delta) {
+bool Method::ajust_stack_map_table2(int bci, int delta, int already_updated) {
+  if (!has_stackmap_table()) {
+    return false;
+  }
+  int updated_frame_number = -1;
+  Array<u1>* data = this->stackmap_data();
+  // The data in the array is a classfile representation of the stackmap table
+  stack_map_table* sm_table =
+      stack_map_table::at((address)data->adr_at(0));
+
+  int count = sm_table->number_of_entries();
+  stack_map_frame* frame = sm_table->entries();
+  int bci_iter = -1;
+  bool offset_adjusted = false; // only need to adjust one offset
+
+  for (int i = 0; i < count; ++i) {
+    int offset_delta = frame->offset_delta();
+    bci_iter += offset_delta;
+
+    if (!offset_adjusted && bci_iter > bci && i > already_updated) {
+      updated_frame_number = i;
+      u1 opcode = *(code_base() + bci_iter);
+      if (opcode == Bytecodes::_goto) {
+        return updated_frame_number;
+      }
+      int new_offset_delta = offset_delta + delta;
+
+      if (frame->is_valid_offset(new_offset_delta)) {
+        frame->set_offset_delta(new_offset_delta);
+      } else {
+        assert(frame->is_same_frame() ||
+               frame->is_same_locals_1_stack_item_frame(),
+               "Frame must be one of the compressed forms");
+        // The new delta exceeds the capacity of the 'same_frame' or
+        // 'same_frame_1_stack_item_frame' frame types.  We need to
+        // convert these frames to the extended versions, but the extended
+        // version is bigger and requires more room.  So we allocate a
+        // new array and copy the data, being sure to leave u2-sized hole
+        // right after the 'frame_type' for the new offset field.
+        //
+        // We can safely ignore the reverse situation as a small delta
+        // can still be used in an extended version of the frame.
+
+        size_t frame_offset = (address)frame - (address)data->adr_at(0);
+
+        ClassLoaderData* loader_data = this->method_holder()->class_loader_data();
+        Array<u1>* new_data = insert_hole_at(loader_data, frame_offset + 1, 2, data);
+        if (new_data == NULL) {
+          return -1; // out-of-memory?
+        }
+        // Deallocate old data
+        MetadataFactory::free_array<u1>(loader_data, data);
+        data = new_data;
+
+        address frame_addr = (address)(data->adr_at(0) + frame_offset);
+        frame = stack_map_frame::at(frame_addr);
+
+
+        // Now convert the frames in place
+        if (frame->is_same_frame()) {
+          same_frame_extended::create_at(frame_addr, new_offset_delta);
+        } else {
+          same_locals_1_stack_item_extended::create_at(
+            frame_addr, new_offset_delta, NULL);
+          // the verification_info_type should already be at the right spot
+        }
+      }
+      offset_adjusted = true; // needs to be done only once, since subsequent
+                              // values are offsets from the current
+    }
+
+    // The stack map frame may contain verification types, if so we need to
+    // check and update any Uninitialized type's bci (no matter where it is).
+    int number_of_types = frame->number_of_types();
+    verification_type_info* types = frame->types();
+
+    for (int i = 0; i < number_of_types; ++i) {
+      if (types->is_uninitialized() && types->bci() > bci) {
+        types->set_bci(types->bci() + delta);
+      }
+      types = types->next();
+    }
+
+    // Full frame has stack values too
+    full_frame* ff = frame->as_full_frame();
+    if (ff != NULL) {
+      address eol = (address)types;
+      number_of_types = ff->stack_slots(eol);
+      types = ff->stack(eol);
+      for (int i = 0; i < number_of_types; ++i) {
+        if (types->is_uninitialized() && types->bci() > bci) {
+          types->set_bci(types->bci() + delta);
+        }
+        types = types->next();
+      }
+    }
+
+    frame = frame->next();
+  }
+
+  this->set_stackmap_data(data); // in case it has changed
+  
+  return updated_frame_number;
+}
+
+
+void Method::add_goto_stackmap_frame(int goto_offset, TRAPS) {
+
+  // full_frame {
+  //     u1 frame_type = FULL_FRAME; /* 255 */
+  //     u2 offset_delta;
+  //     u2 number_of_locals;
+  //     verification_type_info locals[number_of_locals];
+  //     u2 number_of_stack_items;
+  //     verification_type_info stack[number_of_stack_items];
+  // }
+  // Object_variable_info {
+  //   u1 tag = ITEM_Object; /* 7 */
+  //   u2 cpool_index;
+  // }
+
+  InstanceKlass* ik = method_holder();
+  ConstantPool* cp = ik->constants();
+  Symbol* klass_name = ik->name();
+  int class_ref_index = cp->find_class_name_index(klass_name->as_utf8(), klass_name->utf8_length());
+
+  // if there is no stackframe present create one
+  if (!has_stackmap_table()) {
+    int new_length_u1 = 12;
+    Array<u1>* new_stackmap = MetadataFactory::new_writeable_array<u1>(
+        ik->class_loader_data(), new_length_u1, CHECK);
+    new_stackmap->at_put(0, 0);
+    new_stackmap->at_put(1, 1);
+    new_stackmap->at_put(2, 255);
+    new_stackmap->at_put(3, goto_offset >> 8 & 0xFF);
+    new_stackmap->at_put(4, goto_offset & 0xFF);
+    new_stackmap->at_put(5, 0); // 1 local
+    new_stackmap->at_put(6, 1); // 1 local
+    new_stackmap->at_put(7, 7);
+    new_stackmap->at_put(8, class_ref_index >> 8 & 0xFF);
+    new_stackmap->at_put(9, class_ref_index & 0xFF);
+    new_stackmap->at_put(10, 0); // 0 stack item
+    new_stackmap->at_put(11, 0); // 0 stack item
+    this->set_stackmap_data(new_stackmap);
+    return;
+  }
+
+  // there is a stackframe present
+  Array<u1>* data = this->stackmap_data();
+  // The data in the array is a classfile representation of the stackmap table
+  stack_map_table* sm_table =
+    stack_map_table::at((address)data->adr_at(0));
+
+  int count = sm_table->number_of_entries();
+  stack_map_frame* frame = sm_table->entries();
+
+  // get last frame
+  int last_frame_offset = 0;
+  for (int i = 0; i < count; ++i) {
+    int offset_delta = frame->offset_delta();
+    if (i == 0) {
+      last_frame_offset = offset_delta;
+    } else {
+      last_frame_offset += offset_delta;
+    }
+    frame = frame->next();
+  }
+
+  int target_delta = goto_offset - last_frame_offset;
+
+  int old_length = data->length();
+  int new_length = old_length + 10;
+  Array<u1>* new_stackmap = MetadataFactory::new_writeable_array<u1>(
+      ik->class_loader_data(), new_length, CHECK);
+  for (int i = 0; i < old_length; i++) {
+    new_stackmap->at_put(i, data->at(i));
+  }
+  new_stackmap->at_put(old_length + 0, 255);
+  new_stackmap->at_put(old_length + 1, target_delta >> 8 & 0xFF);
+  new_stackmap->at_put(old_length + 2, target_delta & 0xFF);
+  new_stackmap->at_put(old_length + 3, 0); // 1 local
+  new_stackmap->at_put(old_length + 4, 1); // 1 local
+  new_stackmap->at_put(old_length + 5, 7);
+  new_stackmap->at_put(old_length + 6, class_ref_index >> 8 & 0xFF);
+  new_stackmap->at_put(old_length + 7, class_ref_index & 0xFF);
+  new_stackmap->at_put(old_length + 8, 0); // 0 stack item
+  new_stackmap->at_put(old_length + 9, 0); // 0 stack item
+  // update nbr of attributes
+  u2 new_nbr = (u2)(data->at(0) << 8) + data->at(1) + 1;
+  new_stackmap->at_put(0, new_nbr >> 8 & 0xFF);
+  new_stackmap->at_put(1, new_nbr & 0xFF);
+
+  this->set_stackmap_data(new_stackmap);
+
+}
+
+void Method::updateExceptionOffsets(int new_instructions_size, TRAPS) {
+    // 
+    // step 3/3: update offsets in try/catch attributes
+    //
+    ExceptionTable et(this);
+    int et_length = et.length();
+    for (int i = 0; i < et_length; i++) {
+      et.set_start_pc(i, et.start_pc(i) + new_instructions_size);
+      et.set_end_pc(i, et.end_pc(i) + new_instructions_size);
+      et.set_handler_pc(i, et.handler_pc(i) + new_instructions_size);
+    }
+}
+
+void Method::updateExceptionOffsets(int* modified_offsets, 
+                                    int modified_offsets_len, 
+                                    int* len_diff, 
+                                    int len_diff_len, TRAPS) {
+  // 
+  // step 3/3: update offsets in try/catch attributes
+  //
+
+  if (!has_exception_handler()) {
+    return;
+  }
+
+  ExceptionTable et(this);
+  int et_length = et.length();
+  int et_length2 = exception_table_length();
+  for (int i = 0; i < et_length; i++) {
+    int start_pc = et.start_pc(i);
+    int end_pc = et.end_pc(i);
+    int handler_pc = et.handler_pc(i);
+    bool done_start_pc = false;
+    bool done_end_pc = false;
+    bool done_handler_pc = false;
+    int cur_offset = 0;
+    for (int j = 0; j < modified_offsets_len; j++ ) {
+      int offset = modified_offsets[j];
+      if (!done_start_pc && start_pc <= offset) { 
+        done_start_pc = true;
+        et.set_start_pc(i, et.start_pc(i) + cur_offset);
+      }
+      if (!done_end_pc && end_pc <= offset) {
+        done_end_pc = true;
+        et.set_end_pc(i, et.end_pc(i) + cur_offset);
+      }
+      if (!done_handler_pc && handler_pc <= offset) {
+        done_handler_pc = true;
+        et.set_handler_pc(i, et.handler_pc(i) + cur_offset);
+      }
+      cur_offset += len_diff[j];
+    }
+  }
+}
+
 int Method::fast_exception_handler_bci_for(methodHandle mh, KlassHandle ex_klass, int throw_bci, TRAPS) {
-  // exception table holds quadruple entries of the form (beg_bci, end_bci, handler_bci, klass_index)
+  // exception table holds quadruple entries of the form 
+  // (beg_bci, end_bci, handler_bci, klass_index)
   // access exception table
   ExceptionTable table(mh());
   int length = table.length();
@@ -1178,6 +1916,130 @@ Klass* Method::check_non_bcp_klass(Klass* klass) {
   return NULL;
 }
 
+Method* Method::clone_with_new_code_stackmap_exception(
+    u_char* new_code, int new_code_length, TRAPS) {
+
+  Method* m = this;
+
+  // Code below does not work for native methods - they should never get rewritten anyway
+  assert(!m->is_native(), "cannot rewrite native methods");
+  // Allocate new Method*
+  AccessFlags flags = m->access_flags();
+
+  ConstMethod* cm = m->constMethod();
+  int checked_exceptions_len = cm->checked_exceptions_length();
+  int localvariable_len = cm->localvariable_table_length();
+  int exception_table_len = cm->exception_table_length();
+  int method_parameters_len = cm->method_parameters_length();
+  int method_annotations_len = cm->method_annotations_length();
+  int parameter_annotations_len = cm->parameter_annotations_length();
+  int type_annotations_len = cm->type_annotations_length();
+  int default_annotations_len = cm->default_annotations_length();
+
+  int compressed_linenumber_size = 0;
+  u1* compressed_linenumber_table = NULL;
+  if (cm->has_linenumber_table()) {
+    CompressedLineNumberReadStream  reader(cm->compressed_linenumber_table());
+    CompressedLineNumberWriteStream writer(64);  // plenty big for most line number tables
+    while (reader.read_pair()) {
+      writer.write_pair(reader.bci() , reader.line());
+    }
+    writer.write_terminator();
+    compressed_linenumber_table = cm->compressed_linenumber_table();
+    compressed_linenumber_size = writer.position();
+  }
+
+  InlineTableSizes sizes(
+      localvariable_len,
+      compressed_linenumber_size,
+      exception_table_len,
+      checked_exceptions_len,
+      method_parameters_len,
+      cm->generic_signature_index(),
+      method_annotations_len,
+      parameter_annotations_len,
+      type_annotations_len,
+      default_annotations_len,
+      0);
+
+  ClassLoaderData* loader_data = m->method_holder()->class_loader_data();
+  Method* newm_oop = Method::allocate(loader_data,
+                                      new_code_length,
+                                      flags,
+                                      &sizes,
+                                      m->method_type(),
+                                      CHECK_NULL);
+                                      //CHECK_(methodHandle()));
+  //methodHandle newm (THREAD, newm_oop);
+  Method* newm = newm_oop;
+  int new_method_size = newm->method_size();
+
+  // Create a shallow copy of Method part, but be careful to preserve the new ConstMethod*
+  ConstMethod* newcm = newm->constMethod();
+  int new_const_method_size = newm->constMethod()->size();
+
+  //memcpy(newm(), m(), sizeof(Method));
+  memcpy(newm, m, sizeof(Method));
+
+  // Create shallow copy of ConstMethod.
+  memcpy(newcm, m->constMethod(), sizeof(ConstMethod));
+
+  // Reset correct method/const method, method size, and parameter info
+  newm->set_constMethod(newcm);
+  newm->constMethod()->set_code_size(new_code_length);
+  newm->constMethod()->set_constMethod_size(new_const_method_size);
+  newm->set_method_size(new_method_size);
+  assert(newm->code_size() == new_code_length, "check");
+  assert(newm->method_parameters_length() == method_parameters_len, "check");
+  assert(newm->checked_exceptions_length() == checked_exceptions_len, "check");
+  assert(newm->exception_table_length() == exception_table_len, "check");
+  assert(newm->localvariable_table_length() == localvariable_len, "check");
+  // Copy new byte codes
+  memcpy(newm->code_base(), new_code, new_code_length);
+  // Copy line number table
+  if (compressed_linenumber_size > 0) {
+    memcpy(newm->compressed_linenumber_table(),
+           compressed_linenumber_table,
+           compressed_linenumber_size);
+  }
+  // Copy method_parameters
+  if (method_parameters_len > 0) {
+    memcpy(newm->method_parameters_start(),
+           m->method_parameters_start(),
+           method_parameters_len * sizeof(MethodParametersElement));
+  }
+  // Copy checked_exceptions
+  if (checked_exceptions_len > 0) {
+    memcpy(newm->checked_exceptions_start(),
+           m->checked_exceptions_start(),
+           checked_exceptions_len * sizeof(CheckedExceptionElement));
+  }
+  // Copy exception table
+  if (exception_table_len > 0) {
+    memcpy(newm->exception_table_start(),
+           m->exception_table_start(),
+           exception_table_len * sizeof(ExceptionTableElement));
+  }
+  // Copy local variable number table
+  if (localvariable_len > 0) {
+    memcpy(newm->localvariable_table_start(),
+           m->localvariable_table_start(),
+           localvariable_len * sizeof(LocalVariableTableElement));
+  }
+//  // Copy stackmap table
+//  if (m->has_stackmap_table()) {
+//    int code_attribute_length = m->stackmap_data()->length();
+//    Array<u1>* stackmap_data =
+//      MetadataFactory::new_array<u1>(loader_data, code_attribute_length, 0, CHECK_NULL);
+//    memcpy((void*)stackmap_data->adr_at(0),
+//           (void*)m->stackmap_data()->adr_at(0), code_attribute_length);
+//    newm->set_stackmap_data(stackmap_data);
+//  }
+
+  // copy annotations over to new method
+  newcm->copy_annotations_from(cm);
+  return newm;
+}
 
 methodHandle Method::clone_with_new_data(methodHandle m, u_char* new_code, int new_code_length,
                                                 u_char* new_compressed_linenumber_table, int new_compressed_linenumber_size, TRAPS) {

@@ -835,6 +835,13 @@ class ConstantPool : public Metadata {
   static void copy_cp_to_impl(constantPoolHandle from_cp, int start_i, int end_i, constantPoolHandle to_cp, int to_i, TRAPS);
   static void copy_entry_to(constantPoolHandle from_cp, int from_i, constantPoolHandle to_cp, int to_i, TRAPS);
   static void copy_operands(constantPoolHandle from_cp, constantPoolHandle to_cp, TRAPS);
+  int  find_field_reference_by_name(char* name, int len);
+  int  find_method_reference_by_name(char* class_name, int class_name_len, char* method_name, int method_name_len, char* signature, int signature_len, TRAPS);
+  int  find_method_reference_by_name_only(char* class_name, int class_name_len, char* method_name, int method_name_len, char* signature, int signature_len, TRAPS);
+  bool is_at_method(int method_index, char* class_name, char* method_name, TRAPS);
+  int  find_field_name_index(char* name, int len);
+  int  find_field_descriptor_index(char* name, int len);
+  int  find_class_name_index(char* name, int len);
   int  find_matching_entry(int pattern_i, constantPoolHandle search_cp, TRAPS);
   int  version() const                    { return _saved._version; }
   void set_version(int version)           { _saved._version = version; }
